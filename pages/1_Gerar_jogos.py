@@ -225,7 +225,7 @@ with tab2:
             rows.append(r)
 
         df_out = pd.DataFrame(rows)
-        st.dataframe(df_out, use_container_width=True)
+        st.dataframe(dist, width="content")
         st.download_button(
             "Baixar CSV",
             df_out.to_csv(index=False).encode("utf-8"),
