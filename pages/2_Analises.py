@@ -3,22 +3,26 @@ import streamlit as st
 from src.config import get_spec, Modalidade
 from src.state import init_state, get_history, set_history
 from src.data_caixa import load_history_from_caixa
+from src.ui_status import sidebar_spinner
 from src.analytics import frequencias, atraso, padroes_par_impar_baixa_alta, somas
 
 st.set_page_config(page_title="Análises", page_icon="📊", layout="wide")
 init_state()
 
 st.title("Análises estatísticas")
+
 modalidade: Modalidade = st.sidebar.radio("Modalidade", ["Mega-Sena", "Lotofácil"])
 spec = get_spec(modalidade)
 
 df = get_history(modalidade)
 if df is None:
-    # IMPORTANTE: spinner NÃO existe como st.sidebar.spinner(...)
-    with st.sidebar:
-        with st.spinner("Baixando histórico..."):
+    with sidebar_spinner("Baixando histórico..."):
+        try:
             df = load_history_from_caixa(modalidade)
-            set_history(modalidade, df)
+        except Exception as e:
+            st.error(f"Falha ao baixar/ler histórico: {e}")
+            st.stop()
+        set_history(modalidade, df)
 
 freq_df = frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
 atraso_df = atraso(freq_df, df, spec.n_dezenas_sorteio, spec.n_universo)

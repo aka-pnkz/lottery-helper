@@ -4,6 +4,7 @@ import pandas as pd
 from src.config import get_spec, Modalidade
 from src.state import init_state, get_history, set_history, get_games, set_games
 from src.data_caixa import load_history_from_caixa
+from src.ui_status import sidebar_spinner
 from src.ui import money_ptbr, parse_lista, validar_dezenas
 from src.analytics import frequencias
 from src.domain_lottery import (
@@ -32,16 +33,13 @@ spec = get_spec(modalidade)
 # ---------- HISTÓRICO (in-memory por sessão) ----------
 df = get_history(modalidade)
 if df is None:
-    with st.sidebar:
-        with st.spinner("Baixando histórico..."):
-            try:
-                df = load_history_from_caixa(modalidade)
-            except Exception as e:
-                st.error(f"Falha ao baixar/ler histórico: {e}")
-                st.stop()
-            else:
-                set_history(modalidade, df)
-
+    with sidebar_spinner("Baixando histórico..."):
+        try:
+            df = load_history_from_caixa(modalidade)
+        except Exception as e:
+            st.error(f"Falha ao baixar/ler histórico: {e}")
+            st.stop()
+        set_history(modalidade, df)
 
 freq_df = frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
 
@@ -137,30 +135,21 @@ else:
 
     gerar_misto = st.button("Gerar misto", type="primary")
 
-# estado atual
 jogos, jogos_info = get_games()
 
-# geração (uma estratégia)
 if modo == "Uma estratégia" and gerar:
     if estrategia == "Aleatório puro":
         jogos = gerar_aleatorio_puro(int(qtd), int(tam), spec.n_universo)
     elif estrategia == "Balanceado par/ímpar":
         jogos = gerar_balanceado_par_impar(int(qtd), int(tam), spec.n_universo)
     elif estrategia == "Quentes/Frias/Mix":
-        jogos = gerar_quentes_frias_mix(
-            int(qtd),
-            int(tam),
-            freq_df,
-            spec.n_universo,
-            (int(q_quentes), int(q_frias), int(q_neutras)),
-        )
+        jogos = gerar_quentes_frias_mix(int(qtd), int(tam), freq_df, spec.n_universo, (int(q_quentes), int(q_frias), int(q_neutras)))
     else:
         jogos = gerar_sem_sequencias(int(qtd), int(tam), spec.n_universo, int(limite_seq))
 
     jogos = [j for j in jogos if filtrar_jogo(j, dezenas_fixas, dezenas_proib, soma_min_val, soma_max_val)]
     jogos_info = [{"estrategia": estrategia, "jogo": j} for j in jogos]
 
-# geração (misto)
 if modo == "Misto" and gerar_misto:
     jogos_info = []
 
@@ -173,13 +162,7 @@ if modo == "Misto" and gerar_misto:
         jogos_info.extend({"estrategia": "Balanceado par/ímpar", "jogo": j} for j in js)
 
     if jm.get("Quentes/Frias/Mix", 0) > 0:
-        js = gerar_quentes_frias_mix(
-            int(jm["Quentes/Frias/Mix"]),
-            int(tam),
-            freq_df,
-            spec.n_universo,
-            (int(mix_q_quentes), int(mix_q_frias), int(mix_q_neutras)),
-        )
+        js = gerar_quentes_frias_mix(int(jm["Quentes/Frias/Mix"]), int(tam), freq_df, spec.n_universo, (int(mix_q_quentes), int(mix_q_frias), int(mix_q_neutras)))
         jogos_info.extend({"estrategia": "Quentes/Frias/Mix", "jogo": j} for j in js)
 
     if jm.get("Sem sequências longas", 0) > 0:
@@ -189,7 +172,6 @@ if modo == "Misto" and gerar_misto:
     jogos_info = [info for info in jogos_info if filtrar_jogo(info["jogo"], dezenas_fixas, dezenas_proib, soma_min_val, soma_max_val)]
     jogos = [info["jogo"] for info in jogos_info]
 
-# orçamento
 if (gerar or gerar_misto) and jogos and orcamento_max > 0:
     dentro = []
     custo_acum = 0.0
@@ -199,7 +181,6 @@ if (gerar or gerar_misto) and jogos and orcamento_max > 0:
             break
         custo_acum += c
         dentro.append(info)
-
     jogos_info = dentro
     jogos = [info["jogo"] for info in jogos_info]
 
@@ -214,12 +195,10 @@ with tab1:
     else:
         ct = custo_total(jogos, spec.n_min, spec.preco_base)
         p = prob_premio_maximo_aprox(jogos, spec.n_min, spec.comb_target)
-
         c1, c2, c3 = st.columns(3)
         c1.metric("Jogos", len(jogos))
         c2.metric("Custo estimado", money_ptbr(ct))
         c3.metric("Chance aprox. prêmio máximo", ("NA" if p <= 0 else f"1 em {1/p:,.0f}".replace(",", ".")))
-
         for i, info in enumerate(jogos_info, start=1):
             st.code(f"{i:02d} - {info['estrategia']} - {formatar_jogo(info['jogo'])}")
 
@@ -234,7 +213,6 @@ with tab2:
         for idx, info in enumerate(jogos_info, start=1):
             j = sorted(info["jogo"])
             r = {"jogo_id": idx, "estrategia": info["estrategia"]}
-
             for k, d in enumerate(j, start=1):
                 r[f"d{k}"] = int(d)
 
@@ -243,7 +221,6 @@ with tab2:
             bax, alt = baixos_altos(j, spec.limite_baixo)
             primos = contar_primos(j)
             rep = len(set(j) & dezenas_ult)
-
             r.update({"soma": soma, "pares": pares, "impares": imp, "baixos": bax, "altos": alt, "nprimos": primos, "rep_ultimo": rep})
             rows.append(r)
 
