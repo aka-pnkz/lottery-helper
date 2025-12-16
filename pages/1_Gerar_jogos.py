@@ -35,9 +35,11 @@ spec = get_spec(modalidade)
 
 df = get_history(modalidade)
 if df is None:
-    with st.sidebar.spinner("Baixando histórico..."):
-        df = load_history_from_caixa(modalidade)
-        set_history(modalidade, df)
+    with st.sidebar:
+        with st.spinner("Baixando histórico..."):
+            df = load_history_from_caixa(modalidade)
+            set_history(modalidade, df)
+
 
 freq_df = frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
 
