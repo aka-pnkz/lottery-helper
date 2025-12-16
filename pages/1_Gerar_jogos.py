@@ -32,11 +32,16 @@ spec = get_spec(modalidade)
 # ---------- HISTÓRICO (in-memory por sessão) ----------
 df = get_history(modalidade)
 if df is None:
-    # IMPORTANTE: spinner NÃO existe como st.sidebar.spinner(...)
     with st.sidebar:
         with st.spinner("Baixando histórico..."):
-            df = load_history_from_caixa(modalidade)
-            set_history(modalidade, df)
+            try:
+                df = load_history_from_caixa(modalidade)
+            except Exception as e:
+                st.error(f"Falha ao baixar/ler histórico: {e}")
+                st.stop()
+            else:
+                set_history(modalidade, df)
+
 
 freq_df = frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
 

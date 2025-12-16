@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from io import BytesIO
 import numpy as np
 import pandas as pd
@@ -5,10 +7,19 @@ import requests
 
 from .config import URL_LOTOFACIL_DOWNLOAD, URL_MEGA_DOWNLOAD, Modalidade
 
+
+DEFAULT_HEADERS = {
+    # Ajuda a evitar bloqueio/403 em alguns ambientes
+    "User-Agent": "Mozilla/5.0 (compatible; LotteryHelper/1.0; +https://streamlit.io)",
+    "Accept": "*/*",
+}
+
+
 def baixar_xlsx(url: str) -> BytesIO:
-    r = requests.get(url, timeout=60)
+    r = requests.get(url, timeout=60, headers=DEFAULT_HEADERS)
     r.raise_for_status()
     return BytesIO(r.content)
+
 
 def _limpar_concurso_data(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -24,6 +35,7 @@ def _limpar_concurso_data(df: pd.DataFrame) -> pd.DataFrame:
     df = df.sort_values("concurso").reset_index(drop=True)
     return df
 
+
 def normalizar_megasena(df_raw: pd.DataFrame) -> pd.DataFrame:
     cols = ["Concurso", "Data do Sorteio", "Bola1", "Bola2", "Bola3", "Bola4", "Bola5", "Bola6"]
     faltando = [c for c in cols if c not in df_raw.columns]
@@ -38,6 +50,7 @@ def normalizar_megasena(df_raw: pd.DataFrame) -> pd.DataFrame:
     for c in bolas:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df = df.dropna(subset=bolas)
+
     for c in bolas:
         df[c] = df[c].astype(int)
         df = df[df[c].between(1, 60)]
@@ -45,7 +58,9 @@ def normalizar_megasena(df_raw: pd.DataFrame) -> pd.DataFrame:
     df.rename(columns={f"Bola{i}": f"d{i}" for i in range(1, 7)}, inplace=True)
     dezenas = [f"d{i}" for i in range(1, 7)]
     df[dezenas] = np.sort(df[dezenas].values, axis=1)
+
     return df[["concurso", "data"] + dezenas].sort_values("concurso").reset_index(drop=True)
+
 
 def normalizar_lotofacil(df_raw: pd.DataFrame) -> pd.DataFrame:
     cols = ["Concurso", "Data Sorteio"] + [f"Bola{i}" for i in range(1, 16)]
@@ -61,6 +76,7 @@ def normalizar_lotofacil(df_raw: pd.DataFrame) -> pd.DataFrame:
     for c in bolas:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df = df.dropna(subset=bolas)
+
     for c in bolas:
         df[c] = df[c].astype(int)
         df = df[df[c].between(1, 25)]
@@ -68,13 +84,16 @@ def normalizar_lotofacil(df_raw: pd.DataFrame) -> pd.DataFrame:
     df.rename(columns={f"Bola{i}": f"d{i}" for i in range(1, 16)}, inplace=True)
     dezenas = [f"d{i}" for i in range(1, 16)]
     df[dezenas] = np.sort(df[dezenas].values, axis=1)
+
     return df[["concurso", "data"] + dezenas].sort_values("concurso").reset_index(drop=True)
+
 
 def load_history_from_caixa(mod: Modalidade) -> pd.DataFrame:
     if mod == "Mega-Sena":
         buf = baixar_xlsx(URL_MEGA_DOWNLOAD)
         df_raw = pd.read_excel(buf)
         return normalizar_megasena(df_raw)
+
     buf = baixar_xlsx(URL_LOTOFACIL_DOWNLOAD)
     df_raw = pd.read_excel(buf)
     return normalizar_lotofacil(df_raw)
