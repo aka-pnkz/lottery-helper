@@ -1,0 +1,7 @@
+[theme]
+base = "light"
+primaryColor = "#FF2E88"              # magenta vivo (CTA, foco)
+backgroundColor = "#FFF7FB"           # rosa quase branco
+secondaryBackgroundColor = "#FFFFFF"  # cards
+textColor = "#0B1220"                 # bem escuro
+font = "sans serif"

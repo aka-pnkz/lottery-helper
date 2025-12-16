@@ -21,6 +21,9 @@ from src.domain_lottery import (
     contar_primos,
     formatar_jogo,
 )
+from src.ui_theme import apply_theme
+apply_theme()
+
 
 st.set_page_config(page_title="Gerar jogos", page_icon="🎲", layout="wide")
 init_state()

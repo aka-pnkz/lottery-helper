@@ -3,6 +3,9 @@ from src.config import get_spec, Modalidade
 from src.state import init_state, get_history, set_history
 from src.data_caixa import load_history_from_caixa
 from src.analytics import frequencias, atraso, padroes_par_impar_baixa_alta, somas
+from src.ui_theme import apply_theme
+apply_theme()
+
 
 st.set_page_config(page_title="Análises", page_icon="📊", layout="wide")
 init_state()

@@ -2,6 +2,9 @@ import streamlit as st
 from src.config import Modalidade
 from src.state import init_state, get_history, set_history, clear_history
 from src.data_caixa import load_history_from_caixa
+from src.ui_theme import apply_theme
+apply_theme()
+
 
 st.set_page_config(page_title="Debug", page_icon="🛠️", layout="wide")
 init_state()
