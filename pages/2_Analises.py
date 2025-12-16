@@ -1,11 +1,9 @@
 import streamlit as st
+
 from src.config import get_spec, Modalidade
 from src.state import init_state, get_history, set_history
 from src.data_caixa import load_history_from_caixa
 from src.analytics import frequencias, atraso, padroes_par_impar_baixa_alta, somas
-from src.ui_theme import apply_theme
-apply_theme()
-
 
 st.set_page_config(page_title="Análises", page_icon="📊", layout="wide")
 init_state()
@@ -16,9 +14,11 @@ spec = get_spec(modalidade)
 
 df = get_history(modalidade)
 if df is None:
-    with st.sidebar.spinner("Baixando histórico..."):
-        df = load_history_from_caixa(modalidade)
-        set_history(modalidade, df)
+    # IMPORTANTE: spinner NÃO existe como st.sidebar.spinner(...)
+    with st.sidebar:
+        with st.spinner("Baixando histórico..."):
+            df = load_history_from_caixa(modalidade)
+            set_history(modalidade, df)
 
 freq_df = frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
 atraso_df = atraso(freq_df, df, spec.n_dezenas_sorteio, spec.n_universo)
