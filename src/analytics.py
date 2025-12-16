@@ -53,8 +53,18 @@ def somas(df: pd.DataFrame, n_dezenas_sorteio: int):
     dezenas_cols = [f"d{i}" for i in range(1, n_dezenas_sorteio + 1)]
     dfx = df.copy()
     dfx["soma"] = dfx[dezenas_cols].sum(axis=1)
+
     bins = [0, 150, 200, 250, 300, 350, 500]
     labels = ["0-150", "151-200", "201-250", "251-300", "301-350", "351-500"]
     dfx["faixa_soma"] = pd.cut(dfx["soma"], bins=bins, labels=labels, right=True)
-    dist = dfx["faixa_soma"].value_counts(dropna=False).sort_index().reset_index().rename(columns={"index": "faixa_soma", "faixa_soma": "qtd"})
+
+    dist = (
+        dfx["faixa_soma"]
+        .value_counts(dropna=False)
+        .sort_index()
+        .reset_index()
+    )
+    # garante nomes estáveis
+    dist.columns = ["faixa_soma", "qtd"]
+
     return dfx[["concurso", "soma", "faixa_soma"]], dist

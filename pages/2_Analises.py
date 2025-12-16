@@ -113,7 +113,7 @@ with tab3:
     s1.metric("Soma min", int(dfs["soma"].min()))
     s2.metric("Soma média", f"{dfs['soma'].mean():.1f}")
     s3.metric("Soma max", int(dfs["soma"].max()))
-    s4.metric("Faixas", dist["faixa_soma"].nunique())
+    s4.metric("Faixas", int(dist["faixa_soma"].nunique()) if "faixa_soma" in dist.columns else 0)
 
     c1, c2 = st.columns(2)
     c1.subheader("Soma por concurso")
