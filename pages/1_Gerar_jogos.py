@@ -221,11 +221,24 @@ with tab2:
             bax, alt = baixos_altos(j, spec.limite_baixo)
             primos = contar_primos(j)
             rep = len(set(j) & dezenas_ult)
-            r.update({"soma": soma, "pares": pares, "impares": imp, "baixos": bax, "altos": alt, "nprimos": primos, "rep_ultimo": rep})
+            r.update(
+                {
+                    "soma": soma,
+                    "pares": pares,
+                    "impares": imp,
+                    "baixos": bax,
+                    "altos": alt,
+                    "nprimos": primos,
+                    "rep_ultimo": rep,
+                }
+            )
             rows.append(r)
 
         df_out = pd.DataFrame(rows)
-        st.dataframe(dist, width="content")
+
+        # aqui era "dist" (inexistente). O correto é df_out.
+        st.dataframe(df_out, width="stretch")
+
         st.download_button(
             "Baixar CSV",
             df_out.to_csv(index=False).encode("utf-8"),
