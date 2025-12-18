@@ -88,7 +88,7 @@ except ValueError as e:
     st.stop()
 
 # --------------------------
-# Histórico (cache + session)
+# Histórico
 # --------------------------
 df = get_history(modalidade)
 if df is None:
@@ -105,9 +105,6 @@ freq_df = cached_frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
 last_row = df.iloc[-1]
 dezenas_ult = {int(last_row[f"d{i}"]) for i in range(1, spec.n_dezenas_sorteio + 1)}
 
-# --------------------------
-# Header
-# --------------------------
 header_cards(
     spec,
     df,
@@ -234,7 +231,6 @@ with tab1:
         m3.metric("Chance aprox.", chance_txt)
         m4.metric("Média dezenas/jogo", f"{sum(len(j) for j in jogos) / len(jogos):.1f}")
 
-        # Mantém listagem “leve”: mostra só os primeiros 100 no UI; CSV/export é completo
         preview = games_info[:100]
         if len(games_info) > 100:
             st.caption("Mostrando os 100 primeiros jogos no texto. Use a aba Tabela/Exportar para paginação/CSV.")

@@ -47,7 +47,7 @@ if df is None:
                 st.stop()
             set_history(modalidade, df)
 
-header_cards(spec, df, extra_right="As tabelas são paginadas para manter a página leve.")
+header_cards(spec, df, extra_right="Tabelas paginadas para manter a página leve.")
 st.divider()
 
 # --------------------------
@@ -63,13 +63,11 @@ with tab1:
 
     c1.subheader("Frequência (total)")
     freq_sorted = freq_df.sort_values("frequencia", ascending=False)
-    freq_page = paginate_df(freq_sorted, key="anal_freq", default_page_size=50)
-    df_show(c1, freq_page, height=height)
+    df_show(c1, paginate_df(freq_sorted, key="anal_freq", default_page_size=50), height=height)
 
     c2.subheader("Atraso atual")
     atraso_sorted = atraso_df.sort_values(["atraso_atual", "frequencia"], ascending=[False, False])
-    atraso_page = paginate_df(atraso_sorted, key="anal_atraso", default_page_size=50)
-    df_show(c2, atraso_page, height=height)
+    df_show(c2, paginate_df(atraso_sorted, key="anal_atraso", default_page_size=50), height=height)
 
     st.markdown("### Frequência recente vs total")
     nrec = st.slider("Concursos recentes", min_value=20, max_value=300, value=50, step=10)
@@ -110,7 +108,7 @@ with tab2:
     df_show(c2, paginate_df(dist_ba, key="anal_ba", default_page_size=50), height=height)
 
     with st.expander("Detalhado por concurso (pode ser pesado)"):
-        df_show(st, paginate_df(dfp.sort_values("concurso"), key="anal_detalhe", default_page_size=100), height=height)
+        df_show(st, paginate_df(dfp.sort_values("concurso"), key="anal_det", default_page_size=100), height=height)
 
 with tab3:
     dfs, dist = cached_somas(df, spec.n_dezenas_sorteio)
