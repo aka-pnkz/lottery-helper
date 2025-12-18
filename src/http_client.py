@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import Final
 
+import streamlit as st
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -12,7 +12,7 @@ DEFAULT_HEADERS: Final[dict[str, str]] = {
     "Accept": "*/*",
 }
 
-@lru_cache(maxsize=1)
+@st.cache_resource(show_spinner=False)
 def get_session() -> requests.Session:
     s = requests.Session()
     retry = Retry(

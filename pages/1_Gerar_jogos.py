@@ -1,10 +1,13 @@
-from datetime import datetime
-import streamlit as st
-import pandas as pd
+from __future__ import annotations
 
+from datetime import datetime
+
+import pandas as pd
+import streamlit as st
+
+from src.analytics_cached import cached_frequencias
 from src.config import Modalidade, get_spec
 from src.data_caixa import load_history_from_caixa
-from src.analytics_cached import cached_frequencias
 from src.domain_lottery import (
     baixos_altos,
     contar_primos,
@@ -21,19 +24,23 @@ from src.domain_lottery import (
 )
 from src.models import GameInfo
 from src.state import (
-    init_state,
-    get_history,
-    set_history,
+    clear_games,
     clear_history,
     get_games_info,
+    get_history,
+    init_state,
     set_games_info,
-    clear_games,
+    set_history,
 )
 from src.ui import money_ptbr, parse_lista, validar_dezenas
+from src.ui_components import header_cards
 
 st.set_page_config(page_title="Gerar jogos", page_icon="🎲", layout="wide")
 init_state()
 
+# --------------------------
+# Sidebar
+# --------------------------
 st.sidebar.title("Configurações")
 modalidade: Modalidade = st.sidebar.radio("Modalidade", ["Mega-Sena", "Lotofácil"])
 spec = get_spec(modalidade)
@@ -76,7 +83,9 @@ except ValueError as e:
     st.sidebar.error(str(e))
     st.stop()
 
-# ---------- Histórico ----------
+# --------------------------
+# Histórico
+# --------------------------
 df = get_history(modalidade)
 if df is None:
     with st.sidebar:
@@ -89,20 +98,23 @@ if df is None:
             set_history(modalidade, df)
 
 freq_df = cached_frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
-
 last_row = df.iloc[-1]
 dezenas_ult = {int(last_row[f"d{i}"]) for i in range(1, spec.n_dezenas_sorteio + 1)}
 
-# ---------- Header/UX ----------
-st.markdown(f"## {spec.modalidade} — Gerador de jogos")
-h1, h2, h3, h4 = st.columns(4)
-h1.metric("Concursos (hist)", len(df))
-h2.metric("Concurso max", int(df["concurso"].max()))
-h3.metric("Data do último", str(df["data"].max().date()))
-h4.metric("Aposta base", money_ptbr(spec.preco_base))
+# --------------------------
+# Header UX (reutilizável)
+# --------------------------
+header_cards(
+    spec,
+    df,
+    extra_right=f"Aposta base: {money_ptbr(spec.preco_base)} | Jogo: {spec.n_min}–{spec.n_max} dezenas",
+)
+
 st.divider()
 
-# ---------- Controles de geração ----------
+# --------------------------
+# Geração
+# --------------------------
 modo = st.radio("Modo de geração", ["Uma estratégia", "Misto"], horizontal=True)
 estrategias = ["Aleatório puro", "Balanceado par/ímpar", "Quentes/Frias/Mix", "Sem sequências longas"]
 
@@ -148,7 +160,6 @@ else:
 
     gerar_misto = st.button("Gerar misto", type="primary")
 
-# ---------- Geração ----------
 games_info = get_games_info()
 
 if modo == "Uma estratégia" and gerar:
@@ -157,7 +168,13 @@ if modo == "Uma estratégia" and gerar:
     elif estrategia == "Balanceado par/ímpar":
         jogos = gerar_balanceado_par_impar(int(qtd), int(tam), spec.n_universo)
     elif estrategia == "Quentes/Frias/Mix":
-        jogos = gerar_quentes_frias_mix(int(qtd), int(tam), freq_df, spec.n_universo, (int(q_quentes), int(q_frias), int(q_neutras)))
+        jogos = gerar_quentes_frias_mix(
+            int(qtd),
+            int(tam),
+            freq_df,
+            spec.n_universo,
+            (int(q_quentes), int(q_frias), int(q_neutras)),
+        )
     else:
         jogos = gerar_sem_sequencias(int(qtd), int(tam), spec.n_universo, int(limite_seq))
 
@@ -186,20 +203,17 @@ if modo == "Misto" and gerar_misto:
         itens += [("Quentes/Frias/Mix", j) for j in jogos]
 
     if jm.get("Sem sequências longas", 0) > 0:
-        jogos = gerar_sem_sequencias(
-            int(jm["Sem sequências longas"]),
-            int(tam),
-            spec.n_universo,
-            int(mix_limite_seq),
-        )
+        jogos = gerar_sem_sequencias(int(jm["Sem sequências longas"]), int(tam), spec.n_universo, int(mix_limite_seq))
         itens += [("Sem sequências longas", j) for j in jogos]
 
-    # aplica filtros e cria GameInfo com IDs sequenciais
-    filtrados = [(estrat, j) for (estrat, j) in itens if filtrar_jogo(j, dezenas_fixas, dezenas_proib, soma_min_val, soma_max_val)]
+    filtrados = [
+        (estrat, j)
+        for (estrat, j) in itens
+        if filtrar_jogo(j, dezenas_fixas, dezenas_proib, soma_min_val, soma_max_val)
+    ]
     games_info = [GameInfo(jogo_id=i, estrategia=estrat, dezenas=j) for i, (estrat, j) in enumerate(filtrados, start=1)]
 
-
-# Orçamento
+# orçamento
 if (gerar or gerar_misto) and games_info and orcamento_max > 0:
     dentro: list[GameInfo] = []
     custo_acum = 0.0
@@ -214,7 +228,9 @@ if (gerar or gerar_misto) and games_info and orcamento_max > 0:
 if (gerar or gerar_misto):
     set_games_info(games_info)
 
-# ---------- UI: Tabs + cards ----------
+# --------------------------
+# Tabs
+# --------------------------
 tab1, tab2 = st.tabs(["Jogos", "Tabela/Exportar"])
 
 with tab1:
@@ -224,12 +240,13 @@ with tab1:
         jogos = [gi.dezenas for gi in games_info]
         ct = custo_total(jogos, spec.n_min, spec.preco_base)
         p = prob_premio_maximo_aprox(jogos, spec.n_min, spec.comb_target)
+        chance_txt = ("NA" if p <= 0 else f"1 em {1/p:,.0f}".replace(",", "."))
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Jogos", len(games_info))
         m2.metric("Custo estimado", money_ptbr(ct))
-        m3.metric("Chance aprox.", ("NA" if p <= 0 else f"1 em {1/p:,.0f}".replace(",", ".")))
-        m4.metric("Média dezenas/jogo", f"{sum(len(j) for j in jogos)/len(jogos):.1f}")
+        m3.metric("Chance aprox.", chance_txt)
+        m4.metric("Média dezenas/jogo", f"{sum(len(j) for j in jogos) / len(jogos):.1f}")
 
         for gi in games_info:
             st.code(f"{gi.jogo_id:02d} - {gi.estrategia} - {formatar_jogo(gi.dezenas)}")
@@ -242,6 +259,7 @@ with tab2:
         for gi in games_info:
             j = sorted(gi.dezenas)
             r = {"jogo_id": gi.jogo_id, "estrategia": gi.estrategia}
+
             for k, d in enumerate(j, start=1):
                 r[f"d{k}"] = int(d)
 
@@ -250,11 +268,23 @@ with tab2:
             bax, alt = baixos_altos(j, spec.limite_baixo)
             primos = contar_primos(j)
             rep = len(set(j) & dezenas_ult)
-            r.update({"soma": soma, "pares": pares, "impares": imp, "baixos": bax, "altos": alt, "nprimos": primos, "rep_ultimo": rep})
+
+            r.update(
+                {
+                    "soma": soma,
+                    "pares": pares,
+                    "impares": imp,
+                    "baixos": bax,
+                    "altos": alt,
+                    "nprimos": primos,
+                    "rep_ultimo": rep,
+                }
+            )
             rows.append(r)
 
         df_out = pd.DataFrame(rows)
 
+        # Cards rápidos
         b1, b2, b3, b4 = st.columns(4)
         b1.metric("Soma média", f"{df_out['soma'].mean():.1f}")
         b2.metric("Pares médios", f"{df_out['pares'].mean():.1f}")
@@ -263,9 +293,12 @@ with tab2:
 
         st.dataframe(df_out, width="stretch")
 
+        # Gera bytes UMA vez (melhora resposta do download_button)
+        csv_bytes = df_out.to_csv(index=False).encode("utf-8")
+
         st.download_button(
             "Baixar CSV",
-            df_out.to_csv(index=False).encode("utf-8"),
+            data=csv_bytes,
             file_name=f"jogos_{spec.modalidade}_{datetime.now().date()}.csv",
             mime="text/csv",
         )
