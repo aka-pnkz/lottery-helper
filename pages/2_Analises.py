@@ -19,27 +19,27 @@ from src.ui_components import header_cards
 from src.ui_pagination import paginate_df
 from src.ui_table_prefs import table_prefs_sidebar, df_show
 
-st.set_page_config(page_title="An®¢lises", page_icon="??", layout="wide")
+st.set_page_config(page_title="An√°lises", page_icon="üìä", layout="wide")
 init_state()
 
-st.title("An®¢lises estat®™sticas")
+st.title("An√°lises estat√≠sticas")
 
-modalidade: Modalidade = st.sidebar.radio("Modalidade", ["Mega-Sena", "Lotof®¢cil"])
+modalidade: Modalidade = st.sidebar.radio("Modalidade", ["Mega-Sena", "Lotof√°cil"])
 spec = get_spec(modalidade)
 
-with st.sidebar.expander("A??es", expanded=True):
+with st.sidebar.expander("A√ß√µes", expanded=True):
     c1, c2 = st.columns(2)
 
     with c1:
-        if st.button("Recarregar hist®Ærico"):
+        if st.button("Recarregar hist√≥rico"):
             clear_history(modalidade)
-            st.toast("Hist®Ærico da sess?o limpo", icon="??")
+            st.toast("Hist√≥rico da sess√£o limpo", icon="üßπ")
             st.rerun()
 
     with c2:
         if st.button("Limpar cache (global)"):
             st.cache_data.clear()
-            st.toast("Cache limpo", icon="??")
+            st.toast("Cache limpo", icon="üßº")
             st.rerun()
 
 height = table_prefs_sidebar(prefix="analises")
@@ -47,16 +47,16 @@ height = table_prefs_sidebar(prefix="analises")
 df = get_history(modalidade)
 if df is None:
     with st.sidebar:
-        with st.spinner("Carregando hist®Ærico..."):
+        with st.spinner("Carregando hist√≥rico..."):
             try:
                 df = load_history_cached(modalidade)
             except Exception as e:
-                st.error(f"Falha ao baixar/ler hist®Ærico: {e}")
+                st.error(f"Falha ao baixar/ler hist√≥rico: {e}")
                 st.stop()
             set_history(modalidade, df)
-            st.toast("Hist®Ærico carregado", icon="?")
+            st.toast("Hist√≥rico carregado", icon="‚úÖ")
 
-header_cards(spec, df, extra_right="Tabelas paginadas + gr®¢ficos com fragment + relat®Ærios.")
+header_cards(spec, df, extra_right="Tabelas paginadas + gr√°ficos com fragment + relat√≥rios.")
 st.divider()
 
 freq_df = cached_frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
@@ -65,12 +65,12 @@ dfp, dist_pi, dist_ba = cached_padroes(df, spec.n_dezenas_sorteio, spec.limite_b
 dfs_soma, dist_soma = cached_somas(df, spec.n_dezenas_sorteio)
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    ["Frequ®∫ncia/Atraso", "Padr?es", "Somas", "®≤ltimos", "Gr®¢ficos/Relat®Ærio"]
+    ["Frequ√™ncia/Atraso", "Padr√µes", "Somas", "√öltimos", "Gr√°ficos/Relat√≥rio"]
 )
 
 with tab1:
     c1, c2 = st.columns(2)
-    c1.subheader("Frequ®∫ncia (total)")
+    c1.subheader("Frequ√™ncia (total)")
     df_show(
         c1,
         paginate_df(freq_df.sort_values("frequencia", ascending=False), key="anal_freq", default_page_size=50),
@@ -83,10 +83,10 @@ with tab1:
 
 with tab2:
     c1, c2 = st.columns(2)
-    c1.subheader("Par/®™mpar (distribui??o)")
+    c1.subheader("Par/√çmpar (distribui√ß√£o)")
     df_show(c1, paginate_df(dist_pi, key="anal_pi", default_page_size=50), height=height)
 
-    c2.subheader("Baixa/Alta (distribui??o)")
+    c2.subheader("Baixa/Alta (distribui√ß√£o)")
     df_show(c2, paginate_df(dist_ba, key="anal_ba", default_page_size=50), height=height)
 
     with st.expander("Detalhado por concurso (pode ser pesado)"):
@@ -94,12 +94,12 @@ with tab2:
 
 with tab3:
     c1, c2 = st.columns(2)
-    c1.subheader("Soma por concurso (®≤ltimos N)")
-    ult_n = st.selectbox("®≤ltimos concursos", options=[50, 100, 200, 300, 500], index=2, key="soma_lastn")
+    c1.subheader("Soma por concurso (√∫ltimos N)")
+    ult_n = st.selectbox("√öltimos concursos", options=[50, 100, 200, 300, 500], index=2, key="soma_lastn")
     soma_view = dfs_soma.sort_values("concurso").tail(int(ult_n))
     df_show(c1, soma_view, height=height)
 
-    c2.subheader("Distribui??o por faixa")
+    c2.subheader("Distribui√ß√£o por faixa")
     df_show(c2, paginate_df(dist_soma, key="anal_dist_soma", default_page_size=50), height=height)
 
 with tab4:
@@ -108,20 +108,20 @@ with tab4:
     df_show(st, ult, height=height)
 
 with tab5:
-    st.subheader("Configura??es")
+    st.subheader("Configura√ß√µes")
     c1, c2 = st.columns(2)
     with c1:
-        top_k = st.selectbox("Top K (gr®¢ficos)", options=[10, 15, 20, 30, 50], index=2, key="g_topk")
+        top_k = st.selectbox("Top K (gr√°ficos)", options=[10, 15, 20, 30, 50], index=2, key="g_topk")
     with c2:
-        last_soma = st.selectbox("Soma (®≤ltimos N concursos)", options=[50, 100, 200, 300, 500], index=2, key="g_lastsoma")
+        last_soma = st.selectbox("Soma (√∫ltimos N concursos)", options=[50, 100, 200, 300, 500], index=2, key="g_lastsoma")
 
     @st.fragment
     def render_charts():
-        st.subheader("Gr®¢ficos")
+        st.subheader("Gr√°ficos")
         g1, g2, g3 = st.columns(3)
 
         with g1:
-            st.caption("Top frequ®∫ncia")
+            st.caption("Top frequ√™ncia")
             st.bar_chart(freq_top_df(freq_df, top=int(top_k)), width="stretch", height=280)
 
         with g2:
@@ -134,34 +134,34 @@ with tab5:
 
     @st.fragment
     def render_downloads():
-        st.subheader("Relat®Ærios (download)")
+        st.subheader("Relat√≥rios (download)")
 
         resumo = {
             "Modalidade": spec.modalidade,
             "Concursos": str(len(df)),
-            "Concurso m®¢x": str(int(df["concurso"].max())),
-            "Universo": f"1®C{spec.n_universo}",
+            "Concurso m√°x": str(int(df["concurso"].max())),
+            "Universo": f"1‚Äì{spec.n_universo}",
         }
 
         top_freq = freq_df.sort_values("frequencia", ascending=False).head(int(top_k))
         top_atraso = atraso_df.sort_values(["atraso_atual", "frequencia"], ascending=[False, False]).head(int(top_k))
 
         html_bytes = build_html_report(
-            title="Lottery Helper - Relat®Ærio",
-            subtitle=f"{spec.modalidade} (an®¢lises)",
+            title="Lottery Helper - Relat√≥rio",
+            subtitle=f"{spec.modalidade} (an√°lises)",
             generated_at=datetime.now(),
             summary=resumo,
             tables=[
-                ("Top frequ®∫ncia", top_freq),
+                ("Top frequ√™ncia", top_freq),
                 ("Top atraso", top_atraso),
-                ("Distribui??o Par/®™mpar", dist_pi),
-                ("Distribui??o Baixa/Alta", dist_ba),
-                ("Distribui??o de soma", dist_soma),
+                ("Distribui√ß√£o Par/√çmpar", dist_pi),
+                ("Distribui√ß√£o Baixa/Alta", dist_ba),
+                ("Distribui√ß√£o de soma", dist_soma),
             ],
         )
 
         st.download_button(
-            "Baixar relat®Ærio HTML",
+            "Baixar relat√≥rio HTML",
             data=html_bytes,
             file_name=f"relatorio_{spec.modalidade}_{datetime.now().date()}.html",
             mime="text/html",
@@ -171,7 +171,7 @@ with tab5:
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.download_button(
-                "Frequ®∫ncia (CSV)",
+                "Frequ√™ncia (CSV)",
                 data=df_to_csv_bytes(freq_df),
                 file_name=f"freq_{spec.modalidade}_{datetime.now().date()}.csv",
                 mime="text/csv",
@@ -187,7 +187,7 @@ with tab5:
             )
         with c3:
             st.download_button(
-                "Frequ®∫ncia (JSON)",
+                "Frequ√™ncia (JSON)",
                 data=df_to_json_bytes(freq_df),
                 file_name=f"freq_{spec.modalidade}_{datetime.now().date()}.json",
                 mime="application/json",
@@ -197,10 +197,10 @@ with tab5:
             st.download_button(
                 "Resumo (MD)",
                 data=df_to_md_bytes(
-                    title="Relat®Ærio (resumo)",
+                    title="Relat√≥rio (resumo)",
                     dfs=[
                         ("Resumo", __import__("pandas").DataFrame([resumo])),
-                        ("Top frequ®∫ncia", top_freq),
+                        ("Top frequ√™ncia", top_freq),
                         ("Top atraso", top_atraso),
                     ],
                     max_rows=200,
