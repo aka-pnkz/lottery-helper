@@ -16,13 +16,14 @@ def table_prefs_sidebar(prefix: str = "tabela"):
         height_label = st.selectbox(
             "Altura",
             options=list(HEIGHT_PRESETS.keys()),
-            index=1,  # Compacto
+            index=1,
             key=f"{prefix}_height",
         )
     return HEIGHT_PRESETS[height_label]
 
 
 def df_show(container, df, *, width: str = "stretch", height=None):
+    # NUNCA passar height=None para st.dataframe (gera StreamlitInvalidHeightError). [web:182]
     if height is None:
         return container.dataframe(df, width=width)
     return container.dataframe(df, width=width, height=height)

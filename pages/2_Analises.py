@@ -20,9 +20,6 @@ init_state()
 
 st.title("Análises estatísticas")
 
-# --------------------------
-# Sidebar
-# --------------------------
 modalidade: Modalidade = st.sidebar.radio("Modalidade", ["Mega-Sena", "Lotofácil"])
 spec = get_spec(modalidade)
 
@@ -33,9 +30,6 @@ with st.sidebar.expander("Ações", expanded=True):
 
 height = table_prefs_sidebar(prefix="analises")
 
-# --------------------------
-# Histórico (cache + session)
-# --------------------------
 df = get_history(modalidade)
 if df is None:
     with st.sidebar:
@@ -47,12 +41,9 @@ if df is None:
                 st.stop()
             set_history(modalidade, df)
 
-header_cards(spec, df, extra_right="Tabelas paginadas para manter a página leve.")
+header_cards(spec, df, extra_right="Tabelas paginadas para manter performance.")
 st.divider()
 
-# --------------------------
-# Derivados (cacheados)
-# --------------------------
 freq_df = cached_frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
 atraso_df = cached_atraso(freq_df, df, spec.n_dezenas_sorteio, spec.n_universo)
 
@@ -93,14 +84,7 @@ with tab1:
 with tab2:
     dfp, dist_pi, dist_ba = cached_padroes(df, spec.n_dezenas_sorteio, spec.limite_baixo)
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("P/I mais comum", f"{int(dist_pi.iloc[0]['pares'])}/{int(dist_pi.iloc[0]['impares'])}" if len(dist_pi) else "NA")
-    m2.metric("Qtd (P/I top)", int(dist_pi.iloc[0]["qtd"]) if len(dist_pi) else 0)
-    m3.metric("B/A mais comum", f"{int(dist_ba.iloc[0]['baixos'])}/{int(dist_ba.iloc[0]['altos'])}" if len(dist_ba) else "NA")
-    m4.metric("Qtd (B/A top)", int(dist_ba.iloc[0]["qtd"]) if len(dist_ba) else 0)
-
     c1, c2 = st.columns(2)
-
     c1.subheader("Par/Ímpar (distribuição)")
     df_show(c1, paginate_df(dist_pi, key="anal_pi", default_page_size=50), height=height)
 
@@ -113,14 +97,7 @@ with tab2:
 with tab3:
     dfs, dist = cached_somas(df, spec.n_dezenas_sorteio)
 
-    s1, s2, s3, s4 = st.columns(4)
-    s1.metric("Soma min", int(dfs["soma"].min()))
-    s2.metric("Soma média", f"{dfs['soma'].mean():.1f}")
-    s3.metric("Soma max", int(dfs["soma"].max()))
-    s4.metric("Faixas", int(dist["faixa_soma"].nunique()) if "faixa_soma" in dist.columns else 0)
-
     c1, c2 = st.columns(2)
-
     c1.subheader("Soma por concurso (últimos N)")
     ult_n = st.selectbox("Últimos concursos", options=[50, 100, 200, 300, 500], index=2)
     soma_view = dfs.sort_values("concurso").tail(int(ult_n))
