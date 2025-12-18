@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Iterable
+from typing import Any
 
 import pandas as pd
 
@@ -63,3 +63,26 @@ def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
     # UTF-8 com BOM (Excel-friendly)
     return df.to_csv(index=False).encode("utf-8-sig")
 
+
+def df_to_md_bytes(title: str, dfs: list[tuple[str, pd.DataFrame]], *, max_rows: int = 200) -> bytes:
+    """
+    Gera um markdown simples com seções e tabelas.
+    Observação: DataFrame.to_markdown depende de 'tabulate' instalado.
+    """
+    out = f"# {title}\n\n"
+    for section, df in dfs:
+        out += f"## {section}\n\n"
+        if df is None or df.empty:
+            out += "_Sem dados._\n\n"
+        else:
+            view = df.head(max_rows)
+            out += view.to_markdown(index=False, tablefmt="pipe")
+            out += "\n\n"
+    return out.encode("utf-8")
+
+
+def df_to_json_bytes(df: pd.DataFrame, *, orient: str = "records") -> bytes:
+    """
+    JSON em UTF-8, preservando acentos.
+    """
+    return df.to_json(orient=orient, force_ascii=False).encode("utf-8")

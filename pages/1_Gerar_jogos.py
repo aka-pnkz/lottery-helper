@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pandas as pd
 import streamlit as st
 
 from src.analytics_cached import cached_frequencias
@@ -23,7 +24,12 @@ from src.domain_lottery import (
 from src.games_export import games_info_to_df
 from src.history_cached import load_history_cached
 from src.models import GameInfo
-from src.reports import build_html_report, df_to_csv_bytes
+from src.reports import (
+    build_html_report,
+    df_to_csv_bytes,
+    df_to_json_bytes,
+    df_to_md_bytes,
+)
 from src.state import (
     clear_games,
     clear_history,
@@ -56,6 +62,7 @@ def confirm_dialog(action_key: str, message: str):
         if st.button("Cancelar"):
             st.session_state[action_key] = False
             st.rerun()
+
 
 # --------------------------
 # Sidebar
@@ -93,7 +100,9 @@ with st.sidebar.expander("Filtros (básico)", expanded=False):
     proib_txt = st.text_input("Dezenas proibidas", placeholder="Ex: 1, 2, 3")
     soma_min = st.number_input("Soma mínima", min_value=0, max_value=2000, value=0, step=1)
     soma_max = st.number_input("Soma máxima", min_value=0, max_value=2000, value=0, step=1)
-    orcamento_max = st.number_input("Orçamento máximo", min_value=0.0, max_value=1_000_000.0, value=0.0, step=10.0)
+    orcamento_max = st.number_input(
+        "Orçamento máximo", min_value=0.0, max_value=1_000_000.0, value=0.0, step=10.0
+    )
 
 dezenas_fixas = parse_lista(fixas_txt)
 dezenas_proib = parse_lista(proib_txt)
@@ -105,13 +114,43 @@ if soma_min_val is not None and soma_max_val is not None and soma_min_val > soma
     soma_min_val, soma_max_val = None, None
 
 with st.sidebar.expander("Filtros (heurísticas)", expanded=False):
-    max_rep_ultimo = st.number_input("Máx. repetidas do último", min_value=0, max_value=spec.n_dezenas_sorteio, value=spec.n_dezenas_sorteio, step=1)
-    pares_min = st.number_input("Pares mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1)
-    pares_max = st.number_input("Pares máx", min_value=0, max_value=spec.n_dezenas_sorteio, value=spec.n_dezenas_sorteio, step=1)
-    primos_min = st.number_input("Primos mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1)
-    primos_max = st.number_input("Primos máx", min_value=0, max_value=spec.n_dezenas_sorteio, value=spec.n_dezenas_sorteio, step=1)
-    baixos_min = st.number_input("Baixos mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1)
-    baixos_max = st.number_input("Baixos máx", min_value=0, max_value=spec.n_dezenas_sorteio, value=spec.n_dezenas_sorteio, step=1)
+    max_rep_ultimo = st.number_input(
+        "Máx. repetidas do último",
+        min_value=0,
+        max_value=spec.n_dezenas_sorteio,
+        value=spec.n_dezenas_sorteio,
+        step=1,
+    )
+    pares_min = st.number_input(
+        "Pares mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1
+    )
+    pares_max = st.number_input(
+        "Pares máx",
+        min_value=0,
+        max_value=spec.n_dezenas_sorteio,
+        value=spec.n_dezenas_sorteio,
+        step=1,
+    )
+    primos_min = st.number_input(
+        "Primos mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1
+    )
+    primos_max = st.number_input(
+        "Primos máx",
+        min_value=0,
+        max_value=spec.n_dezenas_sorteio,
+        value=spec.n_dezenas_sorteio,
+        step=1,
+    )
+    baixos_min = st.number_input(
+        "Baixos mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1
+    )
+    baixos_max = st.number_input(
+        "Baixos máx",
+        min_value=0,
+        max_value=spec.n_dezenas_sorteio,
+        value=spec.n_dezenas_sorteio,
+        step=1,
+    )
 
 try:
     validar_dezenas(dezenas_fixas, spec.n_universo, "Fixas")
@@ -171,10 +210,12 @@ def passa_heuristicas(j: list[int]) -> bool:
 
     return True
 
+
 def filtro_total(j: list[int]) -> bool:
     if not filtrar_jogo(j, dezenas_fixas, dezenas_proib, soma_min_val, soma_max_val):
         return False
     return passa_heuristicas(j)
+
 
 # --------------------------
 # Geração
@@ -207,16 +248,20 @@ if modo == "Uma estratégia":
 else:
     tam = st.slider("Dezenas por jogo", spec.n_min, spec.n_max, spec.n_min, key="tam_misto")
 
-    jm = {}
+    jm: dict[str, int] = {}
     jm["Aleatório puro"] = st.number_input("Aleatório puro", 0, 500, 2, 1)
-    jm["Balanceado par/ímpar"] = st.number_input("Balanceado par/ímpar", 0, 500, 2, 1, key="mix_bal")
+    jm["Balanceado par/ímpar"] = st.number_input(
+        "Balanceado par/ímpar", 0, 500, 2, 1, key="mix_bal"
+    )
 
     with st.expander("Quentes/Frias/Mix"):
         jm["Quentes/Frias/Mix"] = st.number_input("Quentes/Frias/Mix", 0, 500, 2, 1)
         c1, c2, c3 = st.columns(3)
         mix_q_quentes = c1.number_input("Quentes (misto)", 0, tam, min(5, tam))
         mix_q_frias = c2.number_input("Frias (misto)", 0, tam, min(5, tam))
-        mix_q_neutras = c3.number_input("Neutras (misto)", 0, tam, max(0, tam - mix_q_quentes - mix_q_frias))
+        mix_q_neutras = c3.number_input(
+            "Neutras (misto)", 0, tam, max(0, tam - mix_q_quentes - mix_q_frias)
+        )
 
     with st.expander("Sem sequências longas"):
         jm["Sem sequências longas"] = st.number_input("Sem sequências longas", 0, 500, 2, 1)
@@ -244,7 +289,10 @@ if modo == "Uma estratégia" and gerar:
             jogos = gerar_sem_sequencias(int(qtd), int(tam), spec.n_universo, int(limite_seq))
 
         jogos = [j for j in jogos if filtro_total(j)]
-        games_info = [GameInfo(jogo_id=i, estrategia=estrategia, dezenas=j) for i, j in enumerate(jogos, start=1)]
+        games_info = [
+            GameInfo(jogo_id=i, estrategia=estrategia, dezenas=j)
+            for i, j in enumerate(jogos, start=1)
+        ]
 
         status.update(label=f"Gerados {len(games_info)} jogos", state="complete")
         st.toast(f"Gerados {len(games_info)} jogos", icon="🎲")
@@ -258,7 +306,9 @@ if modo == "Misto" and gerar_misto:
             itens += [("Aleatório puro", j) for j in jogos]
 
         if jm.get("Balanceado par/ímpar", 0) > 0:
-            jogos = gerar_balanceado_par_impar(int(jm["Balanceado par/ímpar"]), int(tam), spec.n_universo)
+            jogos = gerar_balanceado_par_impar(
+                int(jm["Balanceado par/ímpar"]), int(tam), spec.n_universo
+            )
             itens += [("Balanceado par/ímpar", j) for j in jogos]
 
         if jm.get("Quentes/Frias/Mix", 0) > 0:
@@ -281,7 +331,10 @@ if modo == "Misto" and gerar_misto:
             itens += [("Sem sequências longas", j) for j in jogos]
 
         filtrados = [(estrat, j) for (estrat, j) in itens if filtro_total(j)]
-        games_info = [GameInfo(jogo_id=i, estrategia=estrat, dezenas=j) for i, (estrat, j) in enumerate(filtrados, start=1)]
+        games_info = [
+            GameInfo(jogo_id=i, estrategia=estrat, dezenas=j)
+            for i, (estrat, j) in enumerate(filtrados, start=1)
+        ]
 
         status.update(label=f"Gerados {len(games_info)} jogos (misto)", state="complete")
         st.toast(f"Gerados {len(games_info)} jogos (misto)", icon="🎲")
@@ -299,7 +352,7 @@ if (gerar or gerar_misto) and games_info and orcamento_max > 0:
     games_info = dentro
     st.toast(f"Aplicado orçamento: {len(games_info)} jogos mantidos", icon="💰")
 
-if (gerar or gerar_misto):
+if gerar or gerar_misto:
     set_games_info(games_info)
 
 # --------------------------
@@ -332,7 +385,9 @@ with tab2:
     if not games_info:
         st.info("Sem dados.")
     else:
-        df_out_all = games_info_to_df(games_info, limite_baixo=spec.limite_baixo, dezenas_ult=dezenas_ult)
+        df_out_all = games_info_to_df(
+            games_info, limite_baixo=spec.limite_baixo, dezenas_ult=dezenas_ult
+        )
 
         st.subheader("Tabela (paginada)")
         df_page = paginate_df(df_out_all, key="gerar_out", default_page_size=50)
@@ -344,13 +399,15 @@ with tab2:
             file_name=f"jogos_{spec.modalidade}_{datetime.now().date()}.csv",
             mime="text/csv",
             use_container_width=True,
-        )  # [web:311]
+        )
 
 with tab3:
     if not games_info:
         st.info("Gere jogos para habilitar o relatório.")
     else:
-        df_out_all = games_info_to_df(games_info, limite_baixo=spec.limite_baixo, dezenas_ult=dezenas_ult)
+        df_out_all = games_info_to_df(
+            games_info, limite_baixo=spec.limite_baixo, dezenas_ult=dezenas_ult
+        )
         jogos = [gi.dezenas for gi in games_info]
 
         ct = custo_total(jogos, spec.n_min, spec.preco_base)
@@ -387,18 +444,20 @@ with tab3:
         )
 
         st.subheader("Gráficos (jogos gerados)")
-        # Soma por jogo
         tmp = df_out_all[["jogo_id", "soma"]].set_index("jogo_id")
-        st.line_chart(tmp, width="stretch", height=280)  # [web:377]
+        st.line_chart(tmp, width="stretch", height=280)  # [web:544]
 
         st.subheader("Por estratégia")
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         with c1:
             st.caption("Qtd de jogos por estratégia")
-            st.bar_chart(by_estrat[["qtd"]], width="stretch", height=280)  # [web:381]
+            st.bar_chart(by_estrat[["qtd"]], width="stretch", height=280)  # [web:544]
         with c2:
             st.caption("Soma média por estratégia")
-            st.bar_chart(by_estrat[["soma_media"]], width="stretch", height=280)  # [web:381]
+            st.bar_chart(by_estrat[["soma_media"]], width="stretch", height=280)  # [web:544]
+        with c3:
+            st.caption("Rep. do último (média)")
+            st.bar_chart(by_estrat[["rep_ultimo_media"]], width="stretch", height=280)  # [web:544]
 
         with st.expander("Tabela (por estratégia)"):
             df_show(st, by_estrat.reset_index(), height=height)
@@ -426,7 +485,7 @@ with tab3:
                 file_name=f"relatorio_jogos_{spec.modalidade}_{datetime.now().date()}.html",
                 mime="text/html",
                 use_container_width=True,
-            )  # [web:311]
+            )
         with c2:
             st.download_button(
                 "CSV (jogos)",
@@ -434,7 +493,7 @@ with tab3:
                 file_name=f"jogos_{spec.modalidade}_{datetime.now().date()}.csv",
                 mime="text/csv",
                 use_container_width=True,
-            )  # [web:311]
+            )
         with c3:
             st.download_button(
                 "CSV (estratégias)",
@@ -442,31 +501,29 @@ with tab3:
                 file_name=f"estrategias_{spec.modalidade}_{datetime.now().date()}.csv",
                 mime="text/csv",
                 use_container_width=True,
-            )  # [web:311]
+            )
         with c4:
-            md = "# Relatório de Jogos\n\n"
-            for k, v in resumo.items():
-                md += f"- **{k}**: {v}\n"
-            md += "\n## Filtros\n\n"
-            for k, v in filtros_txt.items():
-                md += f"- **{k}**: {v}\n"
-            md += "\n## Resumo por estratégia\n\n"
-            md += by_estrat.reset_index().to_markdown(index=False, tablefmt="pipe")
-            md += "\n\n## Jogos (Top 50)\n\n"
-            md += df_out_all.head(50).to_markdown(index=False, tablefmt="pipe")
             st.download_button(
                 "MD",
-                data=md.encode("utf-8"),
+                data=df_to_md_bytes(
+                    title="Relatório de Jogos",
+                    dfs=[
+                        ("Resumo", pd.DataFrame([resumo])),
+                        ("Filtros", pd.DataFrame([filtros_txt])),
+                        ("Resumo por estratégia", by_estrat.reset_index()),
+                        ("Jogos (Top 50)", df_out_all.head(50)),
+                    ],
+                    max_rows=200,
+                ),
                 file_name=f"relatorio_jogos_{spec.modalidade}_{datetime.now().date()}.md",
                 mime="text/markdown",
                 use_container_width=True,
-            )  # [web:311]
+            )  # [web:460]
         with c5:
-            json_bytes = df_out_all.to_json(orient="records", force_ascii=False).encode("utf-8")
             st.download_button(
                 "JSON",
-                data=json_bytes,
+                data=df_to_json_bytes(df_out_all),
                 file_name=f"jogos_{spec.modalidade}_{datetime.now().date()}.json",
                 mime="application/json",
                 use_container_width=True,
-            )  # [web:311]
+            )  # [web:633]
