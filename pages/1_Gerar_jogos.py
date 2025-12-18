@@ -34,14 +34,11 @@ from src.state import (
 )
 from src.ui import money_ptbr, parse_lista, validar_dezenas
 from src.ui_components import header_cards
-from src.ui_table_prefs import table_prefs_sidebar
+from src.ui_table_prefs import table_prefs_sidebar, df_show
 
 st.set_page_config(page_title="Gerar jogos", page_icon="🎲", layout="wide")
 init_state()
 
-# --------------------------
-# Sidebar
-# --------------------------
 st.sidebar.title("Configurações")
 modalidade: Modalidade = st.sidebar.radio("Modalidade", ["Mega-Sena", "Lotofácil"])
 spec = get_spec(modalidade)
@@ -58,7 +55,7 @@ with a2:
         clear_games()
         st.rerun()
 
-height_px, top_n = table_prefs_sidebar(prefix="gerar")
+height, top_n = table_prefs_sidebar(prefix="gerar")
 
 st.sidebar.markdown("### Filtros (opcional)")
 fixas_txt = st.sidebar.text_input("Dezenas fixas", placeholder="Ex: 10, 11, 12")
@@ -86,9 +83,6 @@ except ValueError as e:
     st.sidebar.error(str(e))
     st.stop()
 
-# --------------------------
-# Histórico
-# --------------------------
 df = get_history(modalidade)
 if df is None:
     with st.sidebar:
@@ -105,9 +99,6 @@ freq_df = cached_frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
 last_row = df.iloc[-1]
 dezenas_ult = {int(last_row[f"d{i}"]) for i in range(1, spec.n_dezenas_sorteio + 1)}
 
-# --------------------------
-# Header
-# --------------------------
 header_cards(
     spec,
     df,
@@ -115,9 +106,6 @@ header_cards(
 )
 st.divider()
 
-# --------------------------
-# Geração
-# --------------------------
 modo = st.radio("Modo de geração", ["Uma estratégia", "Misto"], horizontal=True)
 estrategias = ["Aleatório puro", "Balanceado par/ímpar", "Quentes/Frias/Mix", "Sem sequências longas"]
 
@@ -171,13 +159,7 @@ if modo == "Uma estratégia" and gerar:
     elif estrategia == "Balanceado par/ímpar":
         jogos = gerar_balanceado_par_impar(int(qtd), int(tam), spec.n_universo)
     elif estrategia == "Quentes/Frias/Mix":
-        jogos = gerar_quentes_frias_mix(
-            int(qtd),
-            int(tam),
-            freq_df,
-            spec.n_universo,
-            (int(q_quentes), int(q_frias), int(q_neutras)),
-        )
+        jogos = gerar_quentes_frias_mix(int(qtd), int(tam), freq_df, spec.n_universo, (int(q_quentes), int(q_frias), int(q_neutras)))
     else:
         jogos = gerar_sem_sequencias(int(qtd), int(tam), spec.n_universo, int(limite_seq))
 
@@ -212,7 +194,6 @@ if modo == "Misto" and gerar_misto:
     filtrados = [(estrat, j) for (estrat, j) in itens if filtrar_jogo(j, dezenas_fixas, dezenas_proib, soma_min_val, soma_max_val)]
     games_info = [GameInfo(jogo_id=i, estrategia=estrat, dezenas=j) for i, (estrat, j) in enumerate(filtrados, start=1)]
 
-# orçamento
 if (gerar or gerar_misto) and games_info and orcamento_max > 0:
     dentro: list[GameInfo] = []
     custo_acum = 0.0
@@ -227,9 +208,6 @@ if (gerar or gerar_misto) and games_info and orcamento_max > 0:
 if (gerar or gerar_misto):
     set_games_info(games_info)
 
-# --------------------------
-# Tabs
-# --------------------------
 tab1, tab2 = st.tabs(["Jogos", "Tabela/Exportar"])
 
 with tab1:
@@ -241,4 +219,57 @@ with tab1:
         p = prob_premio_maximo_aprox(jogos, spec.n_min, spec.comb_target)
         chance_txt = ("NA" if p <= 0 else f"1 em {1/p:,.0f}".replace(",", "."))
 
-        m1, m2, m3, m4
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Jogos", len(games_info))
+        m2.metric("Custo estimado", money_ptbr(ct))
+        m3.metric("Chance aprox.", chance_txt)
+        m4.metric("Média dezenas/jogo", f"{sum(len(j) for j in jogos) / len(jogos):.1f}")
+
+        view = games_info if top_n is None else games_info[:top_n]
+        if top_n is not None and len(games_info) > top_n:
+            st.caption(f"Mostrando {top_n} de {len(games_info)} jogos. Selecione 'Tudo' em Quantidade para ver todos.")
+
+        for gi in view:
+            st.code(f"{gi.jogo_id:02d} - {gi.estrategia} - {formatar_jogo(gi.dezenas)}")
+
+with tab2:
+    if not games_info:
+        st.info("Sem dados.")
+    else:
+        rows_all = []
+        for gi in games_info:
+            j = sorted(gi.dezenas)
+            r = {"jogo_id": gi.jogo_id, "estrategia": gi.estrategia}
+            for k, d in enumerate(j, start=1):
+                r[f"d{k}"] = int(d)
+
+            soma = sum(j)
+            pares, imp = pares_impares(j)
+            bax, alt = baixos_altos(j, spec.limite_baixo)
+            primos = contar_primos(j)
+            rep = len(set(j) & dezenas_ult)
+
+            r.update({"soma": soma, "pares": pares, "impares": imp, "baixos": bax, "altos": alt, "nprimos": primos, "rep_ultimo": rep})
+            rows_all.append(r)
+
+        df_out_all = pd.DataFrame(rows_all)
+
+        b1, b2, b3, b4 = st.columns(4)
+        b1.metric("Soma média", f"{df_out_all['soma'].mean():.1f}")
+        b2.metric("Pares médios", f"{df_out_all['pares'].mean():.1f}")
+        b3.metric("Baixos médios", f"{df_out_all['baixos'].mean():.1f}")
+        b4.metric("Rep. último (média)", f"{df_out_all['rep_ultimo'].mean():.1f}")
+
+        df_view = df_out_all if top_n is None else df_out_all.head(top_n)
+        df_show(st, df_view, height=height)
+
+        if top_n is not None and len(df_out_all) > top_n:
+            st.caption(f"Mostrando {top_n} de {len(df_out_all)} linhas. Exportação baixa o CSV completo.")
+
+        csv_bytes = df_out_all.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Baixar CSV (completo)",
+            data=csv_bytes,
+            file_name=f"jogos_{spec.modalidade}_{datetime.now().date()}.csv",
+            mime="text/csv",
+        )
