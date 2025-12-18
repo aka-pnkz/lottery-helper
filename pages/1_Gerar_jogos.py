@@ -41,6 +41,22 @@ st.set_page_config(page_title="Gerar jogos", page_icon="🎲", layout="wide")
 init_state()
 
 # --------------------------
+# Dialogs (confirmação)
+# --------------------------
+@st.dialog("Confirmar ação")
+def confirm_dialog(action_key: str, message: str):
+    st.write(message)
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Confirmar", type="primary"):
+            st.session_state[action_key] = True
+            st.rerun()
+    with c2:
+        if st.button("Cancelar"):
+            st.session_state[action_key] = False
+            st.rerun()
+
+# --------------------------
 # Sidebar
 # --------------------------
 st.sidebar.title("Configurações")
@@ -51,17 +67,28 @@ with st.sidebar.expander("Ações", expanded=True):
     c1, c2 = st.columns(2)
     with c1:
         if st.button("Recarregar"):
-            clear_history(modalidade)
-            clear_games()
-            st.rerun()
+            confirm_dialog("confirm_reload", "Recarregar histórico e limpar jogos gerados?")
     with c2:
         if st.button("Limpar jogos"):
-            clear_games()
-            st.rerun()
+            confirm_dialog("confirm_clear_games", "Deseja limpar todos os jogos gerados nesta sessão?")
+
+# aplica ações confirmadas
+if st.session_state.get("confirm_reload") is True:
+    st.session_state["confirm_reload"] = None
+    clear_history(modalidade)
+    clear_games()
+    st.toast("Recarregado", icon="✅")
+    st.rerun()
+
+if st.session_state.get("confirm_clear_games") is True:
+    st.session_state["confirm_clear_games"] = None
+    clear_games()
+    st.toast("Jogos limpos", icon="🧹")
+    st.rerun()
 
 height = table_prefs_sidebar(prefix="gerar")
 
-with st.sidebar.expander("Filtros (opcional)", expanded=False):
+with st.sidebar.expander("Filtros (básico)", expanded=False):
     fixas_txt = st.text_input("Dezenas fixas", placeholder="Ex: 10, 11, 12")
     proib_txt = st.text_input("Dezenas proibidas", placeholder="Ex: 1, 2, 3")
     soma_min = st.number_input("Soma mínima", min_value=0, max_value=2000, value=0, step=1)
@@ -77,6 +104,15 @@ if soma_min_val is not None and soma_max_val is not None and soma_min_val > soma
     st.sidebar.warning("Soma mínima > soma máxima. Ignorando filtros de soma.")
     soma_min_val, soma_max_val = None, None
 
+with st.sidebar.expander("Filtros (heurísticas)", expanded=False):
+    max_rep_ultimo = st.number_input("Máx. repetidas do último", min_value=0, max_value=spec.n_dezenas_sorteio, value=spec.n_dezenas_sorteio, step=1)
+    pares_min = st.number_input("Pares mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1)
+    pares_max = st.number_input("Pares máx", min_value=0, max_value=spec.n_dezenas_sorteio, value=spec.n_dezenas_sorteio, step=1)
+    primos_min = st.number_input("Primos mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1)
+    primos_max = st.number_input("Primos máx", min_value=0, max_value=spec.n_dezenas_sorteio, value=spec.n_dezenas_sorteio, step=1)
+    baixos_min = st.number_input("Baixos mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1)
+    baixos_max = st.number_input("Baixos máx", min_value=0, max_value=spec.n_dezenas_sorteio, value=spec.n_dezenas_sorteio, step=1)
+
 try:
     validar_dezenas(dezenas_fixas, spec.n_universo, "Fixas")
     validar_dezenas(dezenas_proib, spec.n_universo, "Proibidas")
@@ -88,21 +124,24 @@ except ValueError as e:
     st.stop()
 
 # --------------------------
-# Histórico
+# Histórico (cache + session)
 # --------------------------
 df = get_history(modalidade)
 if df is None:
-    with st.sidebar:
-        with st.spinner("Carregando histórico..."):
-            try:
-                df = load_history_cached(modalidade)
-            except Exception as e:
-                st.error(f"Falha ao baixar/ler histórico: {e}")
-                st.stop()
-            set_history(modalidade, df)
+    with st.status("Carregando histórico...", expanded=False) as status:
+        try:
+            df = load_history_cached(modalidade)
+        except Exception as e:
+            status.update(label="Falha ao carregar histórico", state="error", expanded=True)
+            st.exception(e)
+            st.stop()
+        set_history(modalidade, df)
+        status.update(label="Histórico carregado", state="complete")
+        st.toast("Histórico carregado", icon="✅")
 
 freq_df = cached_frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
-last_row = df.iloc[-1]
+
+last_row = df.sort_values("concurso").iloc[-1]
 dezenas_ult = {int(last_row[f"d{i}"]) for i in range(1, spec.n_dezenas_sorteio + 1)}
 
 header_cards(
@@ -111,6 +150,33 @@ header_cards(
     extra_right=f"Aposta base: {money_ptbr(spec.preco_base)} | Jogo: {spec.n_min}–{spec.n_max} dezenas",
 )
 st.divider()
+
+# --------------------------
+# Helpers de filtro extra
+# --------------------------
+def passa_heuristicas(j: list[int]) -> bool:
+    pares, _ = pares_impares(j)
+    if pares < int(pares_min) or pares > int(pares_max):
+        return False
+
+    primos = contar_primos(j)
+    if primos < int(primos_min) or primos > int(primos_max):
+        return False
+
+    baixos, _ = baixos_altos(j, spec.limite_baixo)
+    if baixos < int(baixos_min) or baixos > int(baixos_max):
+        return False
+
+    rep = len(set(j) & dezenas_ult)
+    if rep > int(max_rep_ultimo):
+        return False
+
+    return True
+
+def filtro_total(j: list[int]) -> bool:
+    if not filtrar_jogo(j, dezenas_fixas, dezenas_proib, soma_min_val, soma_max_val):
+        return False
+    return passa_heuristicas(j)
 
 # --------------------------
 # Geração
@@ -163,40 +229,49 @@ else:
 games_info = get_games_info()
 
 if modo == "Uma estratégia" and gerar:
-    if estrategia == "Aleatório puro":
-        jogos = gerar_aleatorio_puro(int(qtd), int(tam), spec.n_universo)
-    elif estrategia == "Balanceado par/ímpar":
-        jogos = gerar_balanceado_par_impar(int(qtd), int(tam), spec.n_universo)
-    elif estrategia == "Quentes/Frias/Mix":
-        jogos = gerar_quentes_frias_mix(int(qtd), int(tam), freq_df, spec.n_universo, (int(q_quentes), int(q_frias), int(q_neutras)))
-    else:
-        jogos = gerar_sem_sequencias(int(qtd), int(tam), spec.n_universo, int(limite_seq))
+    with st.status("Gerando jogos...", expanded=False) as status:
+        if estrategia == "Aleatório puro":
+            jogos = gerar_aleatorio_puro(int(qtd), int(tam), spec.n_universo)
+        elif estrategia == "Balanceado par/ímpar":
+            jogos = gerar_balanceado_par_impar(int(qtd), int(tam), spec.n_universo)
+        elif estrategia == "Quentes/Frias/Mix":
+            jogos = gerar_quentes_frias_mix(int(qtd), int(tam), freq_df, spec.n_universo, (int(q_quentes), int(q_frias), int(q_neutras)))
+        else:
+            jogos = gerar_sem_sequencias(int(qtd), int(tam), spec.n_universo, int(limite_seq))
 
-    jogos = [j for j in jogos if filtrar_jogo(j, dezenas_fixas, dezenas_proib, soma_min_val, soma_max_val)]
-    games_info = [GameInfo(jogo_id=i, estrategia=estrategia, dezenas=j) for i, j in enumerate(jogos, start=1)]
+        jogos = [j for j in jogos if filtro_total(j)]
+        games_info = [GameInfo(jogo_id=i, estrategia=estrategia, dezenas=j) for i, j in enumerate(jogos, start=1)]
+
+        status.update(label=f"Gerados {len(games_info)} jogos", state="complete")
+        st.toast(f"Gerados {len(games_info)} jogos", icon="🎲")
 
 if modo == "Misto" and gerar_misto:
-    itens = []
+    with st.status("Gerando jogos (misto)...", expanded=False) as status:
+        itens: list[tuple[str, list[int]]] = []
 
-    if jm.get("Aleatório puro", 0) > 0:
-        jogos = gerar_aleatorio_puro(int(jm["Aleatório puro"]), int(tam), spec.n_universo)
-        itens += [("Aleatório puro", j) for j in jogos]
+        if jm.get("Aleatório puro", 0) > 0:
+            jogos = gerar_aleatorio_puro(int(jm["Aleatório puro"]), int(tam), spec.n_universo)
+            itens += [("Aleatório puro", j) for j in jogos]
 
-    if jm.get("Balanceado par/ímpar", 0) > 0:
-        jogos = gerar_balanceado_par_impar(int(jm["Balanceado par/ímpar"]), int(tam), spec.n_universo)
-        itens += [("Balanceado par/ímpar", j) for j in jogos]
+        if jm.get("Balanceado par/ímpar", 0) > 0:
+            jogos = gerar_balanceado_par_impar(int(jm["Balanceado par/ímpar"]), int(tam), spec.n_universo)
+            itens += [("Balanceado par/ímpar", j) for j in jogos]
 
-    if jm.get("Quentes/Frias/Mix", 0) > 0:
-        jogos = gerar_quentes_frias_mix(int(jm["Quentes/Frias/Mix"]), int(tam), freq_df, spec.n_universo, (int(mix_q_quentes), int(mix_q_frias), int(mix_q_neutras)))
-        itens += [("Quentes/Frias/Mix", j) for j in jogos]
+        if jm.get("Quentes/Frias/Mix", 0) > 0:
+            jogos = gerar_quentes_frias_mix(int(jm["Quentes/Frias/Mix"]), int(tam), freq_df, spec.n_universo, (int(mix_q_quentes), int(mix_q_frias), int(mix_q_neutras)))
+            itens += [("Quentes/Frias/Mix", j) for j in jogos]
 
-    if jm.get("Sem sequências longas", 0) > 0:
-        jogos = gerar_sem_sequencias(int(jm["Sem sequências longas"]), int(tam), spec.n_universo, int(mix_limite_seq))
-        itens += [("Sem sequências longas", j) for j in jogos]
+        if jm.get("Sem sequências longas", 0) > 0:
+            jogos = gerar_sem_sequencias(int(jm["Sem sequências longas"]), int(tam), spec.n_universo, int(mix_limite_seq))
+            itens += [("Sem sequências longas", j) for j in jogos]
 
-    filtrados = [(estrat, j) for (estrat, j) in itens if filtrar_jogo(j, dezenas_fixas, dezenas_proib, soma_min_val, soma_max_val)]
-    games_info = [GameInfo(jogo_id=i, estrategia=estrat, dezenas=j) for i, (estrat, j) in enumerate(filtrados, start=1)]
+        filtrados = [(estrat, j) for (estrat, j) in itens if filtro_total(j)]
+        games_info = [GameInfo(jogo_id=i, estrategia=estrat, dezenas=j) for i, (estrat, j) in enumerate(filtrados, start=1)]
 
+        status.update(label=f"Gerados {len(games_info)} jogos (misto)", state="complete")
+        st.toast(f"Gerados {len(games_info)} jogos (misto)", icon="🎲")
+
+# orçamento
 if (gerar or gerar_misto) and games_info and orcamento_max > 0:
     dentro: list[GameInfo] = []
     custo_acum = 0.0
@@ -207,6 +282,7 @@ if (gerar or gerar_misto) and games_info and orcamento_max > 0:
         custo_acum += c
         dentro.append(gi)
     games_info = dentro
+    st.toast(f"Aplicado orçamento: {len(games_info)} jogos mantidos", icon="💰")
 
 if (gerar or gerar_misto):
     set_games_info(games_info)
@@ -233,7 +309,7 @@ with tab1:
 
         preview = games_info[:100]
         if len(games_info) > 100:
-            st.caption("Mostrando os 100 primeiros jogos no texto. Use a aba Tabela/Exportar para paginação/CSV.")
+            st.caption("Mostrando os 100 primeiros jogos. Use a aba Tabela/Exportar para paginação/CSV.")
         for gi in preview:
             st.code(f"{gi.jogo_id:02d} - {gi.estrategia} - {formatar_jogo(gi.dezenas)}")
 
@@ -258,12 +334,6 @@ with tab2:
             rows_all.append(r)
 
         df_out_all = pd.DataFrame(rows_all)
-
-        b1, b2, b3, b4 = st.columns(4)
-        b1.metric("Soma média", f"{df_out_all['soma'].mean():.1f}")
-        b2.metric("Pares médios", f"{df_out_all['pares'].mean():.1f}")
-        b3.metric("Baixos médios", f"{df_out_all['baixos'].mean():.1f}")
-        b4.metric("Rep. último (média)", f"{df_out_all['rep_ultimo'].mean():.1f}")
 
         st.subheader("Tabela (paginada)")
         df_page = paginate_df(df_out_all, key="gerar_out", default_page_size=50)
