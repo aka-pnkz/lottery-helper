@@ -24,16 +24,33 @@ init_state()
 
 st.title("Análises estatísticas")
 
+# --------------------------
+# Sidebar: modalidade + ações
+# --------------------------
 modalidade: Modalidade = st.sidebar.radio("Modalidade", ["Mega-Sena", "Lotofácil"])
 spec = get_spec(modalidade)
 
 with st.sidebar.expander("Ações", expanded=True):
-    if st.button("Recarregar histórico"):
-        clear_history(modalidade)
-        st.rerun()
+    c1, c2 = st.columns(2)
+
+    with c1:
+        if st.button("Recarregar histórico"):
+            clear_history(modalidade)
+            st.toast("Histórico da sessão limpo", icon="🧹")
+            st.rerun()
+
+    with c2:
+        if st.button("Limpar cache (global)"):
+            # Limpa st.cache_data globalmente (inclui load_history_cached). [web:55]
+            st.cache_data.clear()
+            st.toast("Cache limpo", icon="🧼")
+            st.rerun()
 
 height = table_prefs_sidebar(prefix="analises")
 
+# --------------------------
+# Carrega histórico (cache + session)
+# --------------------------
 df = get_history(modalidade)
 if df is None:
     with st.sidebar:
@@ -44,18 +61,26 @@ if df is None:
                 st.error(f"Falha ao baixar/ler histórico: {e}")
                 st.stop()
             set_history(modalidade, df)
+            st.toast("Histórico carregado", icon="✅")
 
-header_cards(spec, df, extra_right="Tabelas paginadas + gráficos e relatório para download.")
+header_cards(spec, df, extra_right="Tabelas paginadas + gráficos com fragment + relatórios.")
 st.divider()
 
-# Derivados
+# --------------------------
+# Derivados (cacheados)
+# --------------------------
 freq_df = cached_frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
 atraso_df = cached_atraso(freq_df, df, spec.n_dezenas_sorteio, spec.n_universo)
 dfp, dist_pi, dist_ba = cached_padroes(df, spec.n_dezenas_sorteio, spec.limite_baixo)
 dfs_soma, dist_soma = cached_somas(df, spec.n_dezenas_sorteio)
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Frequência/Atraso", "Padrões", "Somas", "Últimos", "Gráficos/Relatório"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    ["Frequência/Atraso", "Padrões", "Somas", "Últimos", "Gráficos/Relatório"]
+)
 
+# --------------------------
+# Tabs com tabelas (paginadas)
+# --------------------------
 with tab1:
     c1, c2 = st.columns(2)
 
@@ -94,79 +119,118 @@ with tab4:
     ult = df.sort_values("concurso", ascending=False).head(int(qtd)).sort_values("concurso")
     df_show(st, ult, height=height)
 
+# --------------------------
+# Tab 5: fragments (gráficos + relatórios)
+# --------------------------
 with tab5:
-    st.subheader("Gráficos")
-    c1, c2, c3 = st.columns(3)
-
-    top_k = st.selectbox("Top K (gráficos)", options=[10, 15, 20, 30, 50], index=2)
-    last_soma = st.selectbox("Soma (últimos N concursos)", options=[50, 100, 200, 300, 500], index=2)
-
+    st.subheader("Configurações")
+    c1, c2 = st.columns(2)
     with c1:
-        st.caption("Top frequência")
-        st.bar_chart(freq_top_df(freq_df, top=int(top_k)), width="stretch", height="content")  # [web:381]
-
+        top_k = st.selectbox("Top K (gráficos)", options=[10, 15, 20, 30, 50], index=2, key="g_topk")
     with c2:
-        st.caption("Top atraso")
-        st.bar_chart(atraso_top_df(atraso_df, top=int(top_k)), width="stretch", height="content")  # [web:381]
+        last_soma = st.selectbox("Soma (últimos N concursos)", options=[50, 100, 200, 300, 500], index=2, key="g_lastsoma")
 
-    with c3:
-        st.caption("Soma ao longo do tempo")
-        st.line_chart(soma_series_df(dfs_soma, last_n=int(last_soma)), width="stretch", height="content")  # [web:377]
+    @st.fragment
+    def render_charts():
+        st.subheader("Gráficos")
 
+        g1, g2, g3 = st.columns(3)
+        with g1:
+            st.caption("Top frequência")
+            # st.bar_chart: rápido e interativo. [web:381]
+            st.bar_chart(freq_top_df(freq_df, top=int(top_k)), width="stretch", height="content")  # type: ignore[arg-type]
+
+        with g2:
+            st.caption("Top atraso")
+            st.bar_chart(atraso_top_df(atraso_df, top=int(top_k)), width="stretch", height="content")  # type: ignore[arg-type]
+
+        with g3:
+            st.caption("Soma ao longo do tempo")
+            # st.line_chart: série temporal simples. [web:377]
+            st.line_chart(soma_series_df(dfs_soma, last_n=int(last_soma)), width="stretch", height="content")  # type: ignore[arg-type]
+
+    @st.fragment
+    def render_downloads():
+        st.subheader("Relatórios (download)")
+
+        resumo = {
+            "Modalidade": spec.modalidade,
+            "Concursos": str(len(df)),
+            "Concurso máx": str(int(df["concurso"].max())),
+            "Universo": f"1–{spec.n_universo}",
+        }
+
+        top_freq = freq_df.sort_values("frequencia", ascending=False).head(int(top_k))
+        top_atraso = atraso_df.sort_values(["atraso_atual", "frequencia"], ascending=[False, False]).head(int(top_k))
+
+        html_bytes = build_html_report(
+            title="Lottery Helper - Relatório",
+            subtitle=f"{spec.modalidade} (análises)",
+            generated_at=datetime.now(),
+            summary=resumo,
+            tables=[
+                ("Top frequência", top_freq),
+                ("Top atraso", top_atraso),
+                ("Distribuição Par/Ímpar", dist_pi),
+                ("Distribuição Baixa/Alta", dist_ba),
+                ("Distribuição de soma", dist_soma),
+            ],
+        )
+
+        st.download_button(
+            "Baixar relatório HTML",
+            data=html_bytes,
+            file_name=f"relatorio_{spec.modalidade}_{datetime.now().date()}.html",
+            mime="text/html",
+            use_container_width=True,
+        )  # [web:311]
+
+        c1, c2, c3, c4 = st.columns(4)
+
+        with c1:
+            st.download_button(
+                "Frequência (CSV)",
+                data=df_to_csv_bytes(freq_df),
+                file_name=f"freq_{spec.modalidade}_{datetime.now().date()}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )  # [web:311]
+
+        with c2:
+            st.download_button(
+                "Atraso (CSV)",
+                data=df_to_csv_bytes(atraso_df),
+                file_name=f"atraso_{spec.modalidade}_{datetime.now().date()}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )  # [web:311]
+
+        with c3:
+            json_bytes = freq_df.to_json(orient="records", force_ascii=False).encode("utf-8")
+            st.download_button(
+                "Frequência (JSON)",
+                data=json_bytes,
+                file_name=f"freq_{spec.modalidade}_{datetime.now().date()}.json",
+                mime="application/json",
+                use_container_width=True,
+            )  # [web:311]
+
+        with c4:
+            md = "# Relatório (resumo)\n\n"
+            for k, v in resumo.items():
+                md += f"- **{k}**: {v}\n"
+            md += "\n## Top frequência\n\n"
+            md += top_freq.to_markdown(index=False)
+            md += "\n\n## Top atraso\n\n"
+            md += top_atraso.to_markdown(index=False)
+            st.download_button(
+                "Resumo (MD)",
+                data=md.encode("utf-8"),
+                file_name=f"relatorio_{spec.modalidade}_{datetime.now().date()}.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )  # [web:311]
+
+    render_charts()
     st.divider()
-    st.subheader("Relatórios (download)")
-
-    resumo = {
-        "Modalidade": spec.modalidade,
-        "Concursos": str(len(df)),
-        "Concurso máx": str(int(df["concurso"].max())),
-        "Universo": f"1–{spec.n_universo}",
-    }
-
-    html_bytes = build_html_report(
-        title="Lottery Helper - Relatório",
-        subtitle=f"{spec.modalidade} (análises)",
-        generated_at=datetime.now(),
-        summary=resumo,
-        tables=[
-            ("Top frequência", freq_df.sort_values("frequencia", ascending=False).head(int(top_k))),
-            ("Top atraso", atraso_df.sort_values(["atraso_atual", "frequencia"], ascending=[False, False]).head(int(top_k))),
-            ("Distribuição Par/Ímpar", dist_pi),
-            ("Distribuição Baixa/Alta", dist_ba),
-            ("Distribuição de soma", dist_soma),
-        ],
-    )
-
-    st.download_button(
-        "Baixar relatório HTML",
-        data=html_bytes,
-        file_name=f"relatorio_{spec.modalidade}_{datetime.now().date()}.html",
-        mime="text/html",
-        use_container_width=True,
-    )  # [web:311]
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.download_button(
-            "Baixar frequência (CSV)",
-            data=df_to_csv_bytes(freq_df),
-            file_name=f"freq_{spec.modalidade}_{datetime.now().date()}.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )  # [web:311]
-    with c2:
-        st.download_button(
-            "Baixar atraso (CSV)",
-            data=df_to_csv_bytes(atraso_df),
-            file_name=f"atraso_{spec.modalidade}_{datetime.now().date()}.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )  # [web:311]
-    with c3:
-        st.download_button(
-            "Baixar somas (CSV)",
-            data=df_to_csv_bytes(dfs_soma),
-            file_name=f"somas_{spec.modalidade}_{datetime.now().date()}.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )  # [web:311]
+    render_downloads()
