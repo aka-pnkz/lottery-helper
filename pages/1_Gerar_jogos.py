@@ -7,7 +7,7 @@ import streamlit as st
 
 from src.analytics_cached import cached_frequencias
 from src.config import Modalidade, get_spec
-from src.data_caixa import load_history_from_caixa
+from src.history_cached import load_history_cached
 from src.domain_lottery import (
     baixos_altos,
     contar_primos,
@@ -34,35 +34,39 @@ from src.state import (
 )
 from src.ui import money_ptbr, parse_lista, validar_dezenas
 from src.ui_components import header_cards
+from src.ui_pagination import paginate_df
 from src.ui_table_prefs import table_prefs_sidebar, df_show
 
 st.set_page_config(page_title="Gerar jogos", page_icon="🎲", layout="wide")
 init_state()
 
+# --------------------------
+# Sidebar
+# --------------------------
 st.sidebar.title("Configurações")
 modalidade: Modalidade = st.sidebar.radio("Modalidade", ["Mega-Sena", "Lotofácil"])
 spec = get_spec(modalidade)
 
-st.sidebar.markdown("### Ações")
-a1, a2 = st.sidebar.columns(2)
-with a1:
-    if st.button("Recarregar"):
-        clear_history(modalidade)
-        clear_games()
-        st.rerun()
-with a2:
-    if st.button("Limpar jogos"):
-        clear_games()
-        st.rerun()
+with st.sidebar.expander("Ações", expanded=True):
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Recarregar"):
+            clear_history(modalidade)
+            clear_games()
+            st.rerun()
+    with c2:
+        if st.button("Limpar jogos"):
+            clear_games()
+            st.rerun()
 
-height, top_n = table_prefs_sidebar(prefix="gerar")
+height = table_prefs_sidebar(prefix="gerar")
 
-st.sidebar.markdown("### Filtros (opcional)")
-fixas_txt = st.sidebar.text_input("Dezenas fixas", placeholder="Ex: 10, 11, 12")
-proib_txt = st.sidebar.text_input("Dezenas proibidas", placeholder="Ex: 1, 2, 3")
-soma_min = st.sidebar.number_input("Soma mínima", min_value=0, max_value=2000, value=0, step=1)
-soma_max = st.sidebar.number_input("Soma máxima", min_value=0, max_value=2000, value=0, step=1)
-orcamento_max = st.sidebar.number_input("Orçamento máximo", min_value=0.0, max_value=1_000_000.0, value=0.0, step=10.0)
+with st.sidebar.expander("Filtros (opcional)", expanded=False):
+    fixas_txt = st.text_input("Dezenas fixas", placeholder="Ex: 10, 11, 12")
+    proib_txt = st.text_input("Dezenas proibidas", placeholder="Ex: 1, 2, 3")
+    soma_min = st.number_input("Soma mínima", min_value=0, max_value=2000, value=0, step=1)
+    soma_max = st.number_input("Soma máxima", min_value=0, max_value=2000, value=0, step=1)
+    orcamento_max = st.number_input("Orçamento máximo", min_value=0.0, max_value=1_000_000.0, value=0.0, step=10.0)
 
 dezenas_fixas = parse_lista(fixas_txt)
 dezenas_proib = parse_lista(proib_txt)
@@ -83,22 +87,27 @@ except ValueError as e:
     st.sidebar.error(str(e))
     st.stop()
 
+# --------------------------
+# Histórico (cache + session)
+# --------------------------
 df = get_history(modalidade)
 if df is None:
     with st.sidebar:
-        with st.spinner("Baixando histórico..."):
+        with st.spinner("Carregando histórico..."):
             try:
-                df = load_history_from_caixa(modalidade)
+                df = load_history_cached(modalidade)
             except Exception as e:
                 st.error(f"Falha ao baixar/ler histórico: {e}")
                 st.stop()
             set_history(modalidade, df)
 
 freq_df = cached_frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
-
 last_row = df.iloc[-1]
 dezenas_ult = {int(last_row[f"d{i}"]) for i in range(1, spec.n_dezenas_sorteio + 1)}
 
+# --------------------------
+# Header
+# --------------------------
 header_cards(
     spec,
     df,
@@ -106,6 +115,9 @@ header_cards(
 )
 st.divider()
 
+# --------------------------
+# Geração
+# --------------------------
 modo = st.radio("Modo de geração", ["Uma estratégia", "Misto"], horizontal=True)
 estrategias = ["Aleatório puro", "Balanceado par/ímpar", "Quentes/Frias/Mix", "Sem sequências longas"]
 
@@ -178,13 +190,7 @@ if modo == "Misto" and gerar_misto:
         itens += [("Balanceado par/ímpar", j) for j in jogos]
 
     if jm.get("Quentes/Frias/Mix", 0) > 0:
-        jogos = gerar_quentes_frias_mix(
-            int(jm["Quentes/Frias/Mix"]),
-            int(tam),
-            freq_df,
-            spec.n_universo,
-            (int(mix_q_quentes), int(mix_q_frias), int(mix_q_neutras)),
-        )
+        jogos = gerar_quentes_frias_mix(int(jm["Quentes/Frias/Mix"]), int(tam), freq_df, spec.n_universo, (int(mix_q_quentes), int(mix_q_frias), int(mix_q_neutras)))
         itens += [("Quentes/Frias/Mix", j) for j in jogos]
 
     if jm.get("Sem sequências longas", 0) > 0:
@@ -208,6 +214,9 @@ if (gerar or gerar_misto) and games_info and orcamento_max > 0:
 if (gerar or gerar_misto):
     set_games_info(games_info)
 
+# --------------------------
+# Tabs
+# --------------------------
 tab1, tab2 = st.tabs(["Jogos", "Tabela/Exportar"])
 
 with tab1:
@@ -225,11 +234,11 @@ with tab1:
         m3.metric("Chance aprox.", chance_txt)
         m4.metric("Média dezenas/jogo", f"{sum(len(j) for j in jogos) / len(jogos):.1f}")
 
-        view = games_info if top_n is None else games_info[:top_n]
-        if top_n is not None and len(games_info) > top_n:
-            st.caption(f"Mostrando {top_n} de {len(games_info)} jogos. Selecione 'Tudo' em Quantidade para ver todos.")
-
-        for gi in view:
+        # Mantém listagem “leve”: mostra só os primeiros 100 no UI; CSV/export é completo
+        preview = games_info[:100]
+        if len(games_info) > 100:
+            st.caption("Mostrando os 100 primeiros jogos no texto. Use a aba Tabela/Exportar para paginação/CSV.")
+        for gi in preview:
             st.code(f"{gi.jogo_id:02d} - {gi.estrategia} - {formatar_jogo(gi.dezenas)}")
 
 with tab2:
@@ -260,11 +269,9 @@ with tab2:
         b3.metric("Baixos médios", f"{df_out_all['baixos'].mean():.1f}")
         b4.metric("Rep. último (média)", f"{df_out_all['rep_ultimo'].mean():.1f}")
 
-        df_view = df_out_all if top_n is None else df_out_all.head(top_n)
-        df_show(st, df_view, height=height)
-
-        if top_n is not None and len(df_out_all) > top_n:
-            st.caption(f"Mostrando {top_n} de {len(df_out_all)} linhas. Exportação baixa o CSV completo.")
+        st.subheader("Tabela (paginada)")
+        df_page = paginate_df(df_out_all, key="gerar_out", default_page_size=50)
+        df_show(st, df_page, height=height)
 
         csv_bytes = df_out_all.to_csv(index=False).encode("utf-8")
         st.download_button(
