@@ -91,3 +91,9 @@ def load_history_from_caixa(mod: Modalidade) -> pd.DataFrame:
     buf = baixar_xlsx(URL_LOTOFACIL_DOWNLOAD)
     df_raw = pd.read_excel(buf)
     return normalizar_lotofacil(df_raw)
+    
+def read_csv_smart(path: str) -> pd.DataFrame:
+    try:
+        return pd.read_csv(path, encoding="utf-8")
+    except UnicodeDecodeError:
+        return pd.read_csv(path, encoding="cp1252")  # ou latin1    
