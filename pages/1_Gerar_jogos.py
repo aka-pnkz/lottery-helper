@@ -34,6 +34,7 @@ from src.state import (
 )
 from src.ui import money_ptbr, parse_lista, validar_dezenas
 from src.ui_components import header_cards
+from src.ui_table_prefs import table_prefs_sidebar
 
 st.set_page_config(page_title="Gerar jogos", page_icon="🎲", layout="wide")
 init_state()
@@ -57,10 +58,7 @@ with a2:
         clear_games()
         st.rerun()
 
-st.sidebar.markdown("### Visual")
-altura_tabela = st.sidebar.slider("Altura das tabelas (px)", 250, 900, 420, 10)
-top_n = st.sidebar.slider("Top N (tabela/export)", 10, 200, 50, 10)
-ver_tudo = st.sidebar.toggle("Ver tudo (tabela/export)", value=False)
+height_px, top_n = table_prefs_sidebar(prefix="gerar")
 
 st.sidebar.markdown("### Filtros (opcional)")
 fixas_txt = st.sidebar.text_input("Dezenas fixas", placeholder="Ex: 10, 11, 12")
@@ -108,14 +106,12 @@ last_row = df.iloc[-1]
 dezenas_ult = {int(last_row[f"d{i}"]) for i in range(1, spec.n_dezenas_sorteio + 1)}
 
 # --------------------------
-# Header UX (reuso)
+# Header
 # --------------------------
 header_cards(
     spec,
     df,
-    extra_right=f"Aposta base: {money_ptbr(spec.preco_base)} | "
-                f"Jogo: {spec.n_min}–{spec.n_max} dezenas | "
-                f"Dica: use Top N para deixar mais leve.",
+    extra_right=f"Aposta base: {money_ptbr(spec.preco_base)} | Jogo: {spec.n_min}–{spec.n_max} dezenas",
 )
 st.divider()
 
@@ -245,72 +241,4 @@ with tab1:
         p = prob_premio_maximo_aprox(jogos, spec.n_min, spec.comb_target)
         chance_txt = ("NA" if p <= 0 else f"1 em {1/p:,.0f}".replace(",", "."))
 
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Jogos", len(games_info))
-        m2.metric("Custo estimado", money_ptbr(ct))
-        m3.metric("Chance aprox.", chance_txt)
-        m4.metric("Média dezenas/jogo", f"{sum(len(j) for j in jogos) / len(jogos):.1f}")
-
-        # Para não renderizar uma lista gigante no UI (pesado), usa Top N por padrão
-        view = games_info if ver_tudo else games_info[:top_n]
-        if not ver_tudo and len(games_info) > top_n:
-            st.caption(f"Mostrando {top_n} de {len(games_info)} jogos. Ative 'Ver tudo' para listar todos.")
-
-        for gi in view:
-            st.code(f"{gi.jogo_id:02d} - {gi.estrategia} - {formatar_jogo(gi.dezenas)}")
-
-with tab2:
-    if not games_info:
-        st.info("Sem dados.")
-    else:
-        # Sempre exporta tudo, mas a tabela pode ser Top N
-        rows_all = []
-        for gi in games_info:
-            j = sorted(gi.dezenas)
-            r = {"jogo_id": gi.jogo_id, "estrategia": gi.estrategia}
-            for k, d in enumerate(j, start=1):
-                r[f"d{k}"] = int(d)
-
-            soma = sum(j)
-            pares, imp = pares_impares(j)
-            bax, alt = baixos_altos(j, spec.limite_baixo)
-            primos = contar_primos(j)
-            rep = len(set(j) & dezenas_ult)
-
-            r.update(
-                {
-                    "soma": soma,
-                    "pares": pares,
-                    "impares": imp,
-                    "baixos": bax,
-                    "altos": alt,
-                    "nprimos": primos,
-                    "rep_ultimo": rep,
-                }
-            )
-            rows_all.append(r)
-
-        df_out_all = pd.DataFrame(rows_all)
-
-        # Cards (no total)
-        b1, b2, b3, b4 = st.columns(4)
-        b1.metric("Soma média", f"{df_out_all['soma'].mean():.1f}")
-        b2.metric("Pares médios", f"{df_out_all['pares'].mean():.1f}")
-        b3.metric("Baixos médios", f"{df_out_all['baixos'].mean():.1f}")
-        b4.metric("Rep. último (média)", f"{df_out_all['rep_ultimo'].mean():.1f}")
-
-        # Tabela (Top N por padrão)
-        df_view = df_out_all if ver_tudo else df_out_all.head(top_n)
-        st.dataframe(df_view, width="stretch", height=altura_tabela)
-
-        if not ver_tudo and len(df_out_all) > top_n:
-            st.caption(f"Mostrando {top_n} de {len(df_out_all)} linhas. Exportação baixa o CSV completo.")
-
-        # Export: gera bytes uma vez
-        csv_bytes = df_out_all.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "Baixar CSV (completo)",
-            data=csv_bytes,
-            file_name=f"jogos_{spec.modalidade}_{datetime.now().date()}.csv",
-            mime="text/csv",
-        )
+        m1, m2, m3, m4
