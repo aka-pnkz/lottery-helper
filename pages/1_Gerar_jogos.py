@@ -6,8 +6,11 @@ import pandas as pd
 import streamlit as st
 
 from src.analytics_cached import cached_frequencias
+from src.charts_data import soma_series_df
 from src.config import Modalidade, get_spec
+from src.games_export import games_info_to_df
 from src.history_cached import load_history_cached
+from src.reports import build_html_report, df_to_csv_bytes
 from src.domain_lottery import (
     baixos_altos,
     contar_primos,
@@ -72,7 +75,6 @@ with st.sidebar.expander("Ações", expanded=True):
         if st.button("Limpar jogos"):
             confirm_dialog("confirm_clear_games", "Deseja limpar todos os jogos gerados nesta sessão?")
 
-# aplica ações confirmadas
 if st.session_state.get("confirm_reload") is True:
     st.session_state["confirm_reload"] = None
     clear_history(modalidade)
@@ -124,23 +126,21 @@ except ValueError as e:
     st.stop()
 
 # --------------------------
-# Histórico (cache + session)
+# Histórico
 # --------------------------
 df = get_history(modalidade)
 if df is None:
-    with st.status("Carregando histórico...", expanded=False) as status:
-        try:
-            df = load_history_cached(modalidade)
-        except Exception as e:
-            status.update(label="Falha ao carregar histórico", state="error", expanded=True)
-            st.exception(e)
-            st.stop()
-        set_history(modalidade, df)
-        status.update(label="Histórico carregado", state="complete")
-        st.toast("Histórico carregado", icon="✅")
+    with st.sidebar:
+        with st.spinner("Carregando histórico..."):
+            try:
+                df = load_history_cached(modalidade)
+            except Exception as e:
+                st.error(f"Falha ao baixar/ler histórico: {e}")
+                st.stop()
+            set_history(modalidade, df)
+            st.toast("Histórico carregado", icon="✅")
 
 freq_df = cached_frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
-
 last_row = df.sort_values("concurso").iloc[-1]
 dezenas_ult = {int(last_row[f"d{i}"]) for i in range(1, spec.n_dezenas_sorteio + 1)}
 
@@ -152,25 +152,21 @@ header_cards(
 st.divider()
 
 # --------------------------
-# Helpers de filtro extra
+# Filtros combinados
 # --------------------------
 def passa_heuristicas(j: list[int]) -> bool:
     pares, _ = pares_impares(j)
     if pares < int(pares_min) or pares > int(pares_max):
         return False
-
     primos = contar_primos(j)
     if primos < int(primos_min) or primos > int(primos_max):
         return False
-
     baixos, _ = baixos_altos(j, spec.limite_baixo)
     if baixos < int(baixos_min) or baixos > int(baixos_max):
         return False
-
     rep = len(set(j) & dezenas_ult)
     if rep > int(max_rep_ultimo):
         return False
-
     return True
 
 def filtro_total(j: list[int]) -> bool:
@@ -290,7 +286,7 @@ if (gerar or gerar_misto):
 # --------------------------
 # Tabs
 # --------------------------
-tab1, tab2 = st.tabs(["Jogos", "Tabela/Exportar"])
+tab1, tab2, tab3 = st.tabs(["Jogos", "Tabela/Exportar", "Relatório"])
 
 with tab1:
     if not games_info:
@@ -317,23 +313,7 @@ with tab2:
     if not games_info:
         st.info("Sem dados.")
     else:
-        rows_all = []
-        for gi in games_info:
-            j = sorted(gi.dezenas)
-            r = {"jogo_id": gi.jogo_id, "estrategia": gi.estrategia}
-            for k, d in enumerate(j, start=1):
-                r[f"d{k}"] = int(d)
-
-            soma = sum(j)
-            pares, imp = pares_impares(j)
-            bax, alt = baixos_altos(j, spec.limite_baixo)
-            primos = contar_primos(j)
-            rep = len(set(j) & dezenas_ult)
-
-            r.update({"soma": soma, "pares": pares, "impares": imp, "baixos": bax, "altos": alt, "nprimos": primos, "rep_ultimo": rep})
-            rows_all.append(r)
-
-        df_out_all = pd.DataFrame(rows_all)
+        df_out_all = games_info_to_df(games_info, limite_baixo=spec.limite_baixo, dezenas_ult=dezenas_ult)
 
         st.subheader("Tabela (paginada)")
         df_page = paginate_df(df_out_all, key="gerar_out", default_page_size=50)
@@ -345,4 +325,83 @@ with tab2:
             data=csv_bytes,
             file_name=f"jogos_{spec.modalidade}_{datetime.now().date()}.csv",
             mime="text/csv",
+            use_container_width=True,
         )
+
+with tab3:
+    if not games_info:
+        st.info("Gere jogos para habilitar o relatório.")
+    else:
+        df_out_all = games_info_to_df(games_info, limite_baixo=spec.limite_baixo, dezenas_ult=dezenas_ult)
+        jogos = [gi.dezenas for gi in games_info]
+
+        ct = custo_total(jogos, spec.n_min, spec.preco_base)
+        p = prob_premio_maximo_aprox(jogos, spec.n_min, spec.comb_target)
+        chance_txt = ("NA" if p <= 0 else f"1 em {1/p:,.0f}".replace(",", "."))
+
+        # Gráfico simples: soma por jogo (distribuição rápida)
+        st.subheader("Gráficos (jogos gerados)")
+        tmp = df_out_all[["jogo_id", "soma"]].set_index("jogo_id")
+        st.line_chart(tmp, width="stretch")
+
+        st.divider()
+        st.subheader("Downloads")
+
+        resumo = {
+            "Modalidade": spec.modalidade,
+            "Jogos": str(len(games_info)),
+            "Custo estimado": money_ptbr(ct),
+            "Chance aprox.": chance_txt,
+            "Dezenas/jogo": f"{min(len(j) for j in jogos)}–{max(len(j) for j in jogos)}",
+        }
+
+        html_bytes = build_html_report(
+            title="Lottery Helper - Relatório de Jogos",
+            subtitle=f"{spec.modalidade} (jogos gerados)",
+            generated_at=datetime.now(),
+            summary=resumo,
+            tables=[
+                ("Jogos (amostra)", df_out_all.head(50)),
+                ("Resumo por estratégia", df_out_all.groupby("estrategia", as_index=False).agg(qtd=("jogo_id", "count"), soma_media=("soma", "mean"))),
+            ],
+        )
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.download_button(
+                "Relatório (HTML)",
+                data=html_bytes,
+                file_name=f"relatorio_jogos_{spec.modalidade}_{datetime.now().date()}.html",
+                mime="text/html",
+                use_container_width=True,
+            )
+        with c2:
+            st.download_button(
+                "Jogos (CSV)",
+                data=df_to_csv_bytes(df_out_all),
+                file_name=f"jogos_{spec.modalidade}_{datetime.now().date()}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        with c3:
+            md = "# Relatório de Jogos\n\n"
+            for k, v in resumo.items():
+                md += f"- **{k}**: {v}\n"
+            md += "\n## Jogos (Top 50)\n\n"
+            md += df_out_all.head(50).to_markdown(index=False, tablefmt="pipe")
+            st.download_button(
+                "Resumo (MD)",
+                data=md.encode("utf-8"),
+                file_name=f"relatorio_jogos_{spec.modalidade}_{datetime.now().date()}.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
+        with c4:
+            json_bytes = df_out_all.to_json(orient="records", force_ascii=False).encode("utf-8")
+            st.download_button(
+                "Jogos (JSON)",
+                data=json_bytes,
+                file_name=f"jogos_{spec.modalidade}_{datetime.now().date()}.json",
+                mime="application/json",
+                use_container_width=True,
+            )
