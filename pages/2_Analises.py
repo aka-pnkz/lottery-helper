@@ -1,34 +1,12 @@
-import pandas as pd
 import streamlit as st
 
-from src.analytics import atraso, frequencias, padroes_par_impar_baixa_alta, somas
 from src.config import Modalidade, get_spec
 from src.data_caixa import load_history_from_caixa
-from src.state import clear_history, get_history, init_state, set_history
+from src.state import init_state, get_history, set_history, clear_history
+from src.analytics_cached import cached_frequencias, cached_atraso, cached_padroes, cached_somas
 
 st.set_page_config(page_title="Análises", page_icon="📊", layout="wide")
 init_state()
-
-
-@st.cache_data(show_spinner=False, ttl=60 * 60)
-def cached_frequencias(df: pd.DataFrame, n_dezenas: int, n_universo: int) -> pd.DataFrame:
-    return frequencias(df, n_dezenas, n_universo)
-
-
-@st.cache_data(show_spinner=False, ttl=60 * 60)
-def cached_atraso(freq_df: pd.DataFrame, df: pd.DataFrame, n_dezenas: int, n_universo: int) -> pd.DataFrame:
-    return atraso(freq_df, df, n_dezenas, n_universo)
-
-
-@st.cache_data(show_spinner=False, ttl=60 * 60)
-def cached_padroes(df: pd.DataFrame, n_dezenas: int, limite_baixo: int):
-    return padroes_par_impar_baixa_alta(df, n_dezenas, limite_baixo)
-
-
-@st.cache_data(show_spinner=False, ttl=60 * 60)
-def cached_somas(df: pd.DataFrame, n_dezenas: int):
-    return somas(df, n_dezenas)
-
 
 st.title("Análises estatísticas")
 
@@ -36,7 +14,7 @@ modalidade: Modalidade = st.sidebar.radio("Modalidade", ["Mega-Sena", "Lotofáci
 spec = get_spec(modalidade)
 
 st.sidebar.markdown("### Ações")
-if st.sidebar.button("Recarregar histórico (página)"):
+if st.sidebar.button("Recarregar histórico"):
     clear_history(modalidade)
     st.rerun()
 
@@ -66,12 +44,12 @@ atraso_df = cached_atraso(freq_df, df, spec.n_dezenas_sorteio, spec.n_universo)
 tab1, tab2, tab3, tab4 = st.tabs(["Frequência/Atraso", "Padrões", "Somas", "Últimos"])
 
 with tab1:
-    c1, c2 = st.columns(2)
-    c1.subheader("Frequência (total)")
-    c1.dataframe(freq_df.sort_values("frequencia", ascending=False), width="stretch")
+    a, b = st.columns(2)
+    a.subheader("Frequência (total)")
+    a.dataframe(freq_df.sort_values("frequencia", ascending=False), width="stretch")
 
-    c2.subheader("Atraso atual")
-    c2.dataframe(
+    b.subheader("Atraso atual")
+    b.dataframe(
         atraso_df.sort_values(["atraso_atual", "frequencia"], ascending=[False, False]),
         width="stretch",
     )
@@ -90,13 +68,11 @@ with tab1:
 with tab2:
     dfp, dist_pi, dist_ba = cached_padroes(df, spec.n_dezenas_sorteio, spec.limite_baixo)
 
-    # Cards rápidos
-    a1, a2, a3, a4 = st.columns(4)
-    # melhor “padrão” = o mais frequente (top 1)
-    a1.metric("Padrão P/I mais comum", f"{int(dist_pi.iloc[0]['pares'])}/{int(dist_pi.iloc[0]['impares'])}" if len(dist_pi) else "NA")
-    a2.metric("Qtd (P/I top)", int(dist_pi.iloc[0]["qtd"]) if len(dist_pi) else 0)
-    a3.metric("Padrão B/A mais comum", f"{int(dist_ba.iloc[0]['baixos'])}/{int(dist_ba.iloc[0]['altos'])}" if len(dist_ba) else "NA")
-    a4.metric("Qtd (B/A top)", int(dist_ba.iloc[0]["qtd"]) if len(dist_ba) else 0)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("P/I mais comum", f"{int(dist_pi.iloc[0]['pares'])}/{int(dist_pi.iloc[0]['impares'])}" if len(dist_pi) else "NA")
+    m2.metric("Qtd (P/I top)", int(dist_pi.iloc[0]["qtd"]) if len(dist_pi) else 0)
+    m3.metric("B/A mais comum", f"{int(dist_ba.iloc[0]['baixos'])}/{int(dist_ba.iloc[0]['altos'])}" if len(dist_ba) else "NA")
+    m4.metric("Qtd (B/A top)", int(dist_ba.iloc[0]["qtd"]) if len(dist_ba) else 0)
 
     st.subheader("Par/Ímpar")
     st.dataframe(dist_pi, width="stretch")
@@ -124,9 +100,4 @@ with tab3:
 with tab4:
     qtd = st.slider("Quantidade", 5, 50, 10, 5)
     ult = df.sort_values("concurso", ascending=False).head(qtd).sort_values("concurso")
-
-    u1, u2 = st.columns(2)
-    u1.metric("Exibindo concursos", qtd)
-    u2.metric("Concurso (último exibido)", int(ult["concurso"].max()))
-
     st.dataframe(ult, width="stretch")

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import pandas as pd
 
 def frequencias(df: pd.DataFrame, n_dezenas_sorteio: int, n_universo: int) -> pd.DataFrame:
@@ -24,12 +25,7 @@ def atraso(freq_df: pd.DataFrame, df: pd.DataFrame, n_dezenas_sorteio: int, n_un
         fr = int(freq_df.loc[freq_df["dezena"] == dezena, "frequencia"].iloc[0])
         ult = ultimo.get(dezena)
         linhas.append(
-            {
-                "dezena": dezena,
-                "frequencia": fr,
-                "ultimo_concurso": ult,
-                "atraso_atual": (None if ult is None else max_conc - ult),
-            }
+            {"dezena": dezena, "frequencia": fr, "ultimo_concurso": ult, "atraso_atual": (None if ult is None else max_conc - ult)}
         )
     return pd.DataFrame(linhas)
 
@@ -58,13 +54,7 @@ def somas(df: pd.DataFrame, n_dezenas_sorteio: int):
     labels = ["0-150", "151-200", "201-250", "251-300", "301-350", "351-500"]
     dfx["faixa_soma"] = pd.cut(dfx["soma"], bins=bins, labels=labels, right=True)
 
-    dist = (
-        dfx["faixa_soma"]
-        .value_counts(dropna=False)
-        .sort_index()
-        .reset_index()
-    )
-    # garante nomes estáveis
+    dist = dfx["faixa_soma"].value_counts(dropna=False).sort_index().reset_index()
     dist.columns = ["faixa_soma", "qtd"]
 
     return dfx[["concurso", "soma", "faixa_soma"]], dist

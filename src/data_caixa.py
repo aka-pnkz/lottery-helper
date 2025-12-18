@@ -1,26 +1,16 @@
 from __future__ import annotations
 
 from io import BytesIO
+
 import numpy as np
 import pandas as pd
-import requests
 
 from .config import URL_LOTOFACIL_DOWNLOAD, URL_MEGA_DOWNLOAD, Modalidade
 from .http_client import get_session
 
-DEFAULT_HEADERS = {
-    # Ajuda a evitar bloqueio/403 em alguns ambientes
-    "User-Agent": "Mozilla/5.0 (compatible; LotteryHelper/1.0; +https://streamlit.io)",
-    "Accept": "*/*",
-}
 
 def baixar_xlsx(url: str) -> BytesIO:
     r = get_session().get(url, timeout=60)
-    r.raise_for_status()
-    return BytesIO(r.content)
-
-def baixar_xlsx(url: str) -> BytesIO:
-    r = requests.get(url, timeout=60, headers=DEFAULT_HEADERS)
     r.raise_for_status()
     return BytesIO(r.content)
 

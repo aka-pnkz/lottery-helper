@@ -1,10 +1,13 @@
 from __future__ import annotations
+
 from functools import lru_cache
+from typing import Final
+
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-DEFAULT_HEADERS = {
+DEFAULT_HEADERS: Final[dict[str, str]] = {
     "User-Agent": "Mozilla/5.0 (compatible; LotteryHelper/1.0)",
     "Accept": "*/*",
 }

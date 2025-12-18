@@ -3,7 +3,7 @@ import pandas as pd
 
 from .analytics import frequencias, atraso, padroes_par_impar_baixa_alta, somas
 
-@st.cache_data(show_spinner=False, ttl=60 * 60)  # 1h
+@st.cache_data(show_spinner=False, ttl=60 * 60)
 def cached_frequencias(df: pd.DataFrame, n_dezenas: int, n_universo: int) -> pd.DataFrame:
     return frequencias(df, n_dezenas, n_universo)
 
