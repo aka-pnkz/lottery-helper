@@ -165,26 +165,39 @@ if modo == "Uma estratégia" and gerar:
     games_info = [GameInfo(jogo_id=i, estrategia=estrategia, dezenas=j) for i, j in enumerate(jogos, start=1)]
 
 if modo == "Misto" and gerar_misto:
-    tmp: list[GameInfo] = []
-    idx = 1
-
-    def _add(estrat: str, jogos: list[list[int]]):
-        nonlocal idx
-        for j in jogos:
-            if filtrar_jogo(j, dezenas_fixas, dezenas_proib, soma_min_val, soma_max_val):
-                tmp.append(GameInfo(jogo_id=idx, estrategia=estrat, dezenas=j))
-                idx += 1
+    itens = []
 
     if jm.get("Aleatório puro", 0) > 0:
-        _add("Aleatório puro", gerar_aleatorio_puro(int(jm["Aleatório puro"]), int(tam), spec.n_universo))
-    if jm.get("Balanceado par/ímpar", 0) > 0:
-        _add("Balanceado par/ímpar", gerar_balanceado_par_impar(int(jm["Balanceado par/ímpar"]), int(tam), spec.n_universo))
-    if jm.get("Quentes/Frias/Mix", 0) > 0:
-        _add("Quentes/Frias/Mix", gerar_quentes_frias_mix(int(jm["Quentes/Frias/Mix"]), int(tam), freq_df, spec.n_universo, (int(mix_q_quentes), int(mix_q_frias), int(mix_q_neutras))))
-    if jm.get("Sem sequências longas", 0) > 0:
-        _add("Sem sequências longas", gerar_sem_sequencias(int(jm["Sem sequências longas"]), int(tam), spec.n_universo, int(mix_limite_seq)))
+        jogos = gerar_aleatorio_puro(int(jm["Aleatório puro"]), int(tam), spec.n_universo)
+        itens += [("Aleatório puro", j) for j in jogos]
 
-    games_info = tmp
+    if jm.get("Balanceado par/ímpar", 0) > 0:
+        jogos = gerar_balanceado_par_impar(int(jm["Balanceado par/ímpar"]), int(tam), spec.n_universo)
+        itens += [("Balanceado par/ímpar", j) for j in jogos]
+
+    if jm.get("Quentes/Frias/Mix", 0) > 0:
+        jogos = gerar_quentes_frias_mix(
+            int(jm["Quentes/Frias/Mix"]),
+            int(tam),
+            freq_df,
+            spec.n_universo,
+            (int(mix_q_quentes), int(mix_q_frias), int(mix_q_neutras)),
+        )
+        itens += [("Quentes/Frias/Mix", j) for j in jogos]
+
+    if jm.get("Sem sequências longas", 0) > 0:
+        jogos = gerar_sem_sequencias(
+            int(jm["Sem sequências longas"]),
+            int(tam),
+            spec.n_universo,
+            int(mix_limite_seq),
+        )
+        itens += [("Sem sequências longas", j) for j in jogos]
+
+    # aplica filtros e cria GameInfo com IDs sequenciais
+    filtrados = [(estrat, j) for (estrat, j) in itens if filtrar_jogo(j, dezenas_fixas, dezenas_proib, soma_min_val, soma_max_val)]
+    games_info = [GameInfo(jogo_id=i, estrategia=estrat, dezenas=j) for i, (estrat, j) in enumerate(filtrados, start=1)]
+
 
 # Orçamento
 if (gerar or gerar_misto) and games_info and orcamento_max > 0:
