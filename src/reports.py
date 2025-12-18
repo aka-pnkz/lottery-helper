@@ -7,10 +7,11 @@ import json
 import pandas as pd
 
 
+# =========================
+# Bytes helpers (novos)
+# =========================
 def df_to_csv_bytes(df: pd.DataFrame) -> bytes:
-    """
-    CSV em UTF-8 com BOM (utf-8-sig) para abrir bem no Excel (PT-BR).
-    """
+    """CSV em UTF-8 com BOM (utf-8-sig) para abrir bem no Excel (PT-BR)."""
     if df is None:
         df = pd.DataFrame()
     return df.to_csv(index=False).encode("utf-8-sig")
@@ -22,13 +23,8 @@ def df_to_md_bytes(
     *,
     max_rows: int = 200,
 ) -> bytes:
-    """
-    Gera um relatório em Markdown contendo múltiplas tabelas.
-    Requer 'tabulate' instalado para DataFrame.to_markdown().
-    """
-    lines: list[str] = []
-    lines.append(f"# {title}")
-    lines.append("")
+    """Relatório em Markdown com múltiplas tabelas (requer tabulate)."""
+    lines: list[str] = [f"# {title}", ""]
 
     for section_title, df in dfs:
         lines.append(f"## {section_title}")
@@ -46,9 +42,7 @@ def df_to_md_bytes(
 
 
 def df_to_json_bytes(df: pd.DataFrame) -> bytes:
-    """
-    JSON em UTF-8 (sem escapar acentos), no formato 'records'.
-    """
+    """JSON em UTF-8 (sem escapar acentos), formato records."""
     if df is None or df.empty:
         payload: list[dict[str, Any]] = []
     else:
@@ -57,6 +51,9 @@ def df_to_json_bytes(df: pd.DataFrame) -> bytes:
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
 
+# =========================
+# HTML report
+# =========================
 def _html_table(df: pd.DataFrame, max_rows: int = 200) -> str:
     if df is None or df.empty:
         return "<p><em>Sem dados.</em></p>"
@@ -82,7 +79,7 @@ def build_html_report(
     else:
         summary_html = "<tr><td><em>Sem dados.</em></td></tr>"
 
-    tables_html = []
+    tables_html: list[str] = []
     for section_title, df in tables:
         tables_html.append(f"<h2>{section_title}</h2>")
         tables_html.append(_html_table(df))
@@ -113,9 +110,6 @@ def build_html_report(
       vertical-align: top;
     }}
     th {{ background: #f6f6f6; }}
-    code, pre {{
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-    }}
   </style>
 </head>
 <body>
@@ -135,3 +129,12 @@ def build_html_report(
 </html>
 """
     return html.encode("utf-8")
+
+
+# =========================
+# Aliases (compatibilidade)
+# =========================
+buildhtmlreport = build_html_report
+dftocsvbytes = df_to_csv_bytes
+dftomdbytes = df_to_md_bytes
+dftojsonbytes = df_to_json_bytes

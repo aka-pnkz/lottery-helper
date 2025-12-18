@@ -84,9 +84,30 @@ def games_info_to_df(
         if col not in df.columns:
             df[col] = pd.Series(dtype="int64")
 
-    # Ordena as colunas para ficar previsível
+    # Ordena colunas para ficar previsível
     d_cols = [f"d{k}" for k in range(1, max_dezenas + 1)]
-    ordered = ["jogo_id", "estrategia", *d_cols, "soma", "pares", "impares", "baixos", "altos", "nprimos", "rep_ultimo"]
+    ordered = [
+        "jogo_id",
+        "estrategia",
+        *d_cols,
+        "soma",
+        "pares",
+        "impares",
+        "baixos",
+        "altos",
+        "nprimos",
+        "rep_ultimo",
+    ]
     df = df.reindex(columns=[c for c in ordered if c in df.columns])
 
     return df
+
+
+# Alias para compatibilidade com imports antigos (pages/1_Gerar_jogos.py)
+def gamesinfotodf(
+    games_info: list[GameInfo],
+    *,
+    limite_baixo: int,
+    dezenas_ult: set[int],
+) -> pd.DataFrame:
+    return games_info_to_df(games_info, limite_baixo=limite_baixo, dezenas_ult=dezenas_ult)
