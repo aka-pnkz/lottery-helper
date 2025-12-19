@@ -24,7 +24,13 @@ from src.domain_lottery import (
 from src.games_export import games_info_to_df
 from src.history_cached import load_history_cached
 from src.models import GameInfo
-from src.reports import build_html_report, df_to_csv_bytes, df_to_json_bytes, df_to_md_bytes
+from src.reports import (
+    build_html_report,
+    df_to_csv_bytes,
+    df_to_json_bytes,
+    df_to_md_bytes,
+    make_zip_bytes,
+)
 from src.state import (
     clear_games,
     clear_history,
@@ -40,9 +46,7 @@ from src.ui_pagination import paginate_df
 from src.ui_table_prefs import df_show, table_prefs_sidebar
 
 st.set_page_config(page_title="Gerar jogos", page_icon="🎲", layout="wide")
-
 init_state()
-
 
 # --------------------------
 # Dialogs (confirmação)
@@ -98,11 +102,7 @@ with st.sidebar.expander("Filtros (básico)", expanded=False):
     soma_min = st.number_input("Soma mínima", min_value=0, max_value=2000, value=0, step=1)
     soma_max = st.number_input("Soma máxima", min_value=0, max_value=2000, value=0, step=1)
     orcamento_max = st.number_input(
-        "Orçamento máximo",
-        min_value=0.0,
-        max_value=1_000_000.0,
-        value=0.0,
-        step=10.0,
+        "Orçamento máximo", min_value=0.0, max_value=1_000_000.0, value=0.0, step=10.0
     )
 
 dezenas_fixas = parse_lista(fixas_txt)
@@ -161,7 +161,6 @@ except ValueError as e:
     st.sidebar.error(str(e))
     st.stop()
 
-
 # --------------------------
 # Histórico
 # --------------------------
@@ -174,7 +173,6 @@ if df is None:
             except Exception as e:
                 st.error(f"Falha ao baixar/ler histórico: {e}")
                 st.stop()
-
     set_history(modalidade, df)
     st.toast("Histórico carregado", icon="✅")
 
@@ -259,7 +257,6 @@ else:
 
     with st.expander("Quentes/Frias/Mix"):
         jm["Quentes/Frias/Mix"] = st.number_input("Quentes/Frias/Mix", 0, 500, 2, 1)
-
         c1, c2, c3 = st.columns(3)
         mix_q_quentes = c1.number_input("Quentes (misto)", 0, tam, min(5, tam))
         mix_q_frias = c2.number_input("Frias (misto)", 0, tam, min(5, tam))
@@ -319,7 +316,12 @@ if modo == "Misto" and gerar_misto:
             itens += [("Quentes/Frias/Mix", j) for j in jogos]
 
         if jm.get("Sem sequências longas", 0) > 0:
-            jogos = gerar_sem_sequencias(int(jm["Sem sequências longas"]), int(tam), spec.n_universo, int(mix_limite_seq))
+            jogos = gerar_sem_sequencias(
+                int(jm["Sem sequências longas"]),
+                int(tam),
+                spec.n_universo,
+                int(mix_limite_seq),
+            )
             itens += [("Sem sequências longas", j) for j in jogos]
 
         filtrados = [(estrat, j) for (estrat, j) in itens if filtro_total(j)]
@@ -332,7 +334,6 @@ if modo == "Misto" and gerar_misto:
 if (gerar or gerar_misto) and games_info and orcamento_max > 0:
     dentro: list[GameInfo] = []
     custo_acum = 0.0
-
     for gi in games_info:
         c = preco_aposta(len(gi.dezenas), spec.n_min, spec.preco_base)
         if custo_acum + c > float(orcamento_max):
@@ -369,7 +370,6 @@ with tab1:
         preview = games_info[:100]
         if len(games_info) > 100:
             st.caption("Mostrando os 100 primeiros jogos. Use a aba Tabela/Exportar para paginação/CSV.")
-
         for gi in preview:
             st.code(f"{gi.jogo_id:02d} - {gi.estrategia} - {formatar_jogo(gi.dezenas)}")
 
@@ -464,6 +464,35 @@ with tab3:
             ],
         )
 
+        md_bytes = df_to_md_bytes(
+            title="Relatório de Jogos",
+            dfs=[
+                ("Resumo", pd.DataFrame([resumo])),
+                ("Filtros", pd.DataFrame([filtros_txt])),
+                ("Resumo por estratégia", by_estrat.reset_index()),
+                ("Jogos (Top 50)", df_out_all.head(50)),
+            ],
+            max_rows=200,
+        )
+
+        zip_bytes = make_zip_bytes(
+            [
+                (f"relatorio_jogos_{spec.modalidade}.html", html_bytes),
+                (f"jogos_{spec.modalidade}.csv", df_to_csv_bytes(df_out_all)),
+                (f"estrategias_{spec.modalidade}.csv", df_to_csv_bytes(by_estrat.reset_index())),
+                (f"relatorio_jogos_{spec.modalidade}.md", md_bytes),
+                (f"jogos_{spec.modalidade}.json", df_to_json_bytes(df_out_all)),
+            ]
+        )
+
+        st.download_button(
+            "Baixar tudo (ZIP)",
+            data=zip_bytes,
+            file_name=f"bundle_jogos_{spec.modalidade}_{datetime.now().date()}.zip",
+            mime="application/zip",
+            use_container_width=True,
+        )
+
         c1, c2, c3, c4, c5 = st.columns(5)
 
         with c1:
@@ -496,16 +525,7 @@ with tab3:
         with c4:
             st.download_button(
                 "MD",
-                data=df_to_md_bytes(
-                    title="Relatório de Jogos",
-                    dfs=[
-                        ("Resumo", pd.DataFrame([resumo])),
-                        ("Filtros", pd.DataFrame([filtros_txt])),
-                        ("Resumo por estratégia", by_estrat.reset_index()),
-                        ("Jogos (Top 50)", df_out_all.head(50)),
-                    ],
-                    max_rows=200,
-                ),
+                data=md_bytes,
                 file_name=f"relatorio_jogos_{spec.modalidade}_{datetime.now().date()}.md",
                 mime="text/markdown",
                 use_container_width=True,
