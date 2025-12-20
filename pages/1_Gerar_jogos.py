@@ -69,6 +69,7 @@ def confirm_dialog(action_key: str, message: str):
 # Sidebar
 # --------------------------
 st.sidebar.title("Configurações")
+
 modalidade: Modalidade = st.sidebar.radio("Modalidade", ["Mega-Sena", "Lotofácil"])
 spec = get_spec(modalidade)
 
@@ -101,8 +102,15 @@ with st.sidebar.expander("Filtros (básico)", expanded=False):
     proib_txt = st.text_input("Dezenas proibidas", placeholder="Ex: 1, 2, 3")
     soma_min = st.number_input("Soma mínima", min_value=0, max_value=2000, value=0, step=1)
     soma_max = st.number_input("Soma máxima", min_value=0, max_value=2000, value=0, step=1)
+
     orcamento_max = st.number_input(
-        "Orçamento máximo", min_value=0.0, max_value=1_000_000.0, value=0.0, step=10.0
+        "Orçamento máximo",
+        min_value=0.0,
+        max_value=1_000_000.0,
+        value=0.0,
+        step=10.0,
+        key="orcamento_max",
+        help="Ao informar um orçamento, a quantidade de jogos passa a ser calculada automaticamente.",
     )
 
 dezenas_fixas = parse_lista(fixas_txt)
@@ -173,6 +181,7 @@ if df is None:
             except Exception as e:
                 st.error(f"Falha ao baixar/ler histórico: {e}")
                 st.stop()
+
     set_history(modalidade, df)
     st.toast("Histórico carregado", icon="✅")
 
@@ -186,7 +195,6 @@ header_cards(
     extra_right=f"Aposta base: {money_ptbr(spec.preco_base)} | Jogo: {spec.n_min}–{spec.n_max} dezenas",
 )
 st.divider()
-
 
 # --------------------------
 # Filtros combinados
@@ -226,29 +234,58 @@ estrategias = ["Aleatório puro", "Balanceado par/ímpar", "Quentes/Frias/Mix", 
 gerar = False
 gerar_misto = False
 
+games_info = get_games_info()
+
+usar_orcamento = float(orcamento_max) > 0
+
 if modo == "Uma estratégia":
     estrategia = st.selectbox("Estratégia", estrategias)
-    qtd = st.number_input("Quantidade de jogos", min_value=1, max_value=500, value=10, step=1)
-    tam = st.slider("Dezenas por jogo", spec.n_min, spec.n_max, spec.n_min)
+
+    tam = st.slider("Dezenas por jogo", spec.n_min, spec.n_max, spec.n_min, key="tam_uma")
+
+    custo_jogo = float(preco_aposta(int(tam), int(spec.n_min), float(spec.preco_base)))
+    if usar_orcamento and custo_jogo > 0:
+        qtd_calc = int(float(orcamento_max) // custo_jogo)
+        qtd_calc = max(1, min(500, qtd_calc))
+    else:
+        qtd_calc = 10
+
+    qtd = st.number_input(
+        "Quantidade de jogos",
+        min_value=1,
+        max_value=500,
+        value=int(qtd_calc),
+        step=1,
+        key="qtd_uma",
+        disabled=usar_orcamento,
+        help="Com orçamento informado, a quantidade é calculada automaticamente.",
+    )
+
+    if usar_orcamento:
+        st.caption(
+            f"Orçamento: {money_ptbr(float(orcamento_max))} | "
+            f"Custo/jogo: {money_ptbr(custo_jogo)} | "
+            f"Qtd máx: {int(qtd)}"
+        )
 
     q_quentes = q_frias = q_neutras = 0
     limite_seq = 3
 
     if estrategia == "Quentes/Frias/Mix":
         c1, c2, c3 = st.columns(3)
-        q_quentes = c1.number_input("Quentes", 0, tam, min(5, tam))
-        q_frias = c2.number_input("Frias", 0, tam, min(5, tam))
-        q_neutras = c3.number_input("Neutras", 0, tam, max(0, tam - q_quentes - q_frias))
+        q_quentes = c1.number_input("Quentes", 0, int(tam), min(5, int(tam)))
+        q_frias = c2.number_input("Frias", 0, int(tam), min(5, int(tam)))
+        q_neutras = c3.number_input("Neutras", 0, int(tam), max(0, int(tam) - int(q_quentes) - int(q_frias)))
 
     if estrategia == "Sem sequências longas":
-        limite_seq = st.slider("Máx. sequência", 2, min(10, tam), 3)
+        limite_seq = st.slider("Máx. sequência", 2, min(10, int(tam)), 3)
 
     gerar = st.button("Gerar", type="primary")
 
 else:
     tam = st.slider("Dezenas por jogo", spec.n_min, spec.n_max, spec.n_min, key="tam_misto")
-    jm: dict[str, int] = {}
 
+    jm: dict[str, int] = {}
     jm["Aleatório puro"] = st.number_input("Aleatório puro", 0, 500, 2, 1)
     jm["Balanceado par/ímpar"] = st.number_input("Balanceado par/ímpar", 0, 500, 2, 1, key="mix_bal")
 
@@ -258,18 +295,21 @@ else:
     with st.expander("Quentes/Frias/Mix"):
         jm["Quentes/Frias/Mix"] = st.number_input("Quentes/Frias/Mix", 0, 500, 2, 1)
         c1, c2, c3 = st.columns(3)
-        mix_q_quentes = c1.number_input("Quentes (misto)", 0, tam, min(5, tam))
-        mix_q_frias = c2.number_input("Frias (misto)", 0, tam, min(5, tam))
-        mix_q_neutras = c3.number_input("Neutras (misto)", 0, tam, max(0, tam - mix_q_quentes - mix_q_frias))
+        mix_q_quentes = c1.number_input("Quentes (misto)", 0, int(tam), min(5, int(tam)))
+        mix_q_frias = c2.number_input("Frias (misto)", 0, int(tam), min(5, int(tam)))
+        mix_q_neutras = c3.number_input(
+            "Neutras (misto)", 0, int(tam), max(0, int(tam) - int(mix_q_quentes) - int(mix_q_frias))
+        )
 
     with st.expander("Sem sequências longas"):
         jm["Sem sequências longas"] = st.number_input("Sem sequências longas", 0, 500, 2, 1)
-        mix_limite_seq = st.slider("Máx. sequência (misto)", 2, min(10, tam), 3)
+        mix_limite_seq = st.slider("Máx. sequência (misto)", 2, min(10, int(tam)), 3)
 
     gerar_misto = st.button("Gerar misto", type="primary")
 
-games_info = get_games_info()
-
+# --------------------------
+# Execução geração
+# --------------------------
 if modo == "Uma estratégia" and gerar:
     with st.status("Gerando jogos...", expanded=False) as status:
         if estrategia == "Aleatório puro":
@@ -316,12 +356,7 @@ if modo == "Misto" and gerar_misto:
             itens += [("Quentes/Frias/Mix", j) for j in jogos]
 
         if jm.get("Sem sequências longas", 0) > 0:
-            jogos = gerar_sem_sequencias(
-                int(jm["Sem sequências longas"]),
-                int(tam),
-                spec.n_universo,
-                int(mix_limite_seq),
-            )
+            jogos = gerar_sem_sequencias(int(jm["Sem sequências longas"]), int(tam), spec.n_universo, int(mix_limite_seq))
             itens += [("Sem sequências longas", j) for j in jogos]
 
         filtrados = [(estrat, j) for (estrat, j) in itens if filtro_total(j)]
@@ -330,12 +365,13 @@ if modo == "Misto" and gerar_misto:
         status.update(label=f"Gerados {len(games_info)} jogos (misto)", state="complete")
         st.toast(f"Gerados {len(games_info)} jogos (misto)", icon="🎲")
 
-# orçamento
-if (gerar or gerar_misto) and games_info and orcamento_max > 0:
+# orçamento (corta a lista para caber no orçamento)
+if (gerar or gerar_misto) and games_info and float(orcamento_max) > 0:
     dentro: list[GameInfo] = []
     custo_acum = 0.0
+
     for gi in games_info:
-        c = preco_aposta(len(gi.dezenas), spec.n_min, spec.preco_base)
+        c = float(preco_aposta(len(gi.dezenas), spec.n_min, spec.preco_base))
         if custo_acum + c > float(orcamento_max):
             break
         custo_acum += c
@@ -370,6 +406,7 @@ with tab1:
         preview = games_info[:100]
         if len(games_info) > 100:
             st.caption("Mostrando os 100 primeiros jogos. Use a aba Tabela/Exportar para paginação/CSV.")
+
         for gi in preview:
             st.code(f"{gi.jogo_id:02d} - {gi.estrategia} - {formatar_jogo(gi.dezenas)}")
 
@@ -494,7 +531,6 @@ with tab3:
         )
 
         c1, c2, c3, c4, c5 = st.columns(5)
-
         with c1:
             st.download_button(
                 "HTML",
@@ -503,7 +539,6 @@ with tab3:
                 mime="text/html",
                 use_container_width=True,
             )
-
         with c2:
             st.download_button(
                 "CSV (jogos)",
@@ -512,7 +547,6 @@ with tab3:
                 mime="text/csv",
                 use_container_width=True,
             )
-
         with c3:
             st.download_button(
                 "CSV (estratégias)",
@@ -521,7 +555,6 @@ with tab3:
                 mime="text/csv",
                 use_container_width=True,
             )
-
         with c4:
             st.download_button(
                 "MD",
@@ -530,7 +563,6 @@ with tab3:
                 mime="text/markdown",
                 use_container_width=True,
             )
-
         with c5:
             st.download_button(
                 "JSON",
@@ -539,4 +571,3 @@ with tab3:
                 mime="application/json",
                 use_container_width=True,
             )
-
