@@ -65,3 +65,4 @@ with tab3:
     last = df.sort_values("concurso").iloc[-1]
     dezenas = [int(last[f"d{i}"]) for i in range(1, spec.n_dezenas_sorteio + 1)]
     st.write({"concurso": int(last["concurso"]), "data": str(last["data"]), "dezenas": sorted(dezenas)})
+
