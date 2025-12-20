@@ -298,7 +298,6 @@ else:
         )
 
         st.subheader("Distribuição das estratégias")
-
         p_ale = st.slider("Peso: Aleatório puro", 0, 100, 25, key="peso_ale")
         p_bal = st.slider("Peso: Balanceado par/ímpar", 0, 100, 25, key="peso_bal")
         p_qfm = st.slider("Peso: Quentes/Frias/Mix", 0, 100, 25, key="peso_qfm")
@@ -328,14 +327,23 @@ else:
                 st.write(f"- {k}: {v}")
 
     else:
-        # Sem orçamento: mantém a escolha manual de quantidades (comportamento antigo)
         jm: dict[str, int] = {}
         jm["Aleatório puro"] = st.number_input("Aleatório puro", 0, 500, 2, 1)
         jm["Balanceado par/ímpar"] = st.number_input("Balanceado par/ímpar", 0, 500, 2, 1, key="mix_bal")
-        jm["Quentes/Frias/Mix"] = st.number_input("Quentes/Frias/Mix", 0, 500, 2, 1)
-        jm["Sem sequências longas"] = st.number_input("Sem sequências longas", 0, 500, 2, 1)
 
-    # Parâmetros da estratégia (misto) — existem sempre, pois alteram o gerador, não a quantidade
+        with st.expander("Quentes/Frias/Mix"):
+            jm["Quentes/Frias/Mix"] = st.number_input("Quentes/Frias/Mix", 0, 500, 2, 1)
+            c1, c2, c3 = st.columns(3)
+            mix_q_quentes = c1.number_input("Quentes (misto)", 0, int(tam), min(5, int(tam)))
+            mix_q_frias = c2.number_input("Frias (misto)", 0, int(tam), min(5, int(tam)))
+            mix_q_neutras = c3.number_input(
+                "Neutras (misto)", 0, int(tam), max(0, int(tam) - int(mix_q_quentes) - int(mix_q_frias))
+            )
+
+        with st.expander("Sem sequências longas"):
+            jm["Sem sequências longas"] = st.number_input("Sem sequências longas", 0, 500, 2, 1)
+            mix_limite_seq = st.slider("Máx. sequência (misto)", 2, min(10, int(tam)), 3)
+
     with st.expander("Parâmetros do Quentes/Frias/Mix (misto)", expanded=False):
         c1, c2, c3 = st.columns(3)
         mix_q_quentes = c1.number_input("Quentes (misto)", 0, int(tam), min(5, int(tam)))
@@ -510,7 +518,22 @@ with tab3:
             .sort_values("qtd", ascending=False)
         )
 
+        st.subheader("Gráficos (jogos gerados)")
+        tmp = df_out_all[["jogo_id", "soma"]].set_index("jogo_id")
+        st.line_chart(tmp, width="stretch", height=280)
+
         st.subheader("Por estratégia")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.caption("Qtd de jogos por estratégia")
+            st.bar_chart(by_estrat[["qtd"]], width="stretch", height=280)
+        with c2:
+            st.caption("Soma média por estratégia")
+            st.bar_chart(by_estrat[["soma_media"]], width="stretch", height=280)
+        with c3:
+            st.caption("Rep. do último (média)")
+            st.bar_chart(by_estrat[["rep_ultimo_media"]], width="stretch", height=280)
+
         with st.expander("Tabela (por estratégia)"):
             df_show(st, by_estrat.reset_index(), height=height)
 
@@ -537,6 +560,7 @@ with tab3:
                 mime="text/html",
                 use_container_width=True,
             )
+
         with c2:
             st.download_button(
                 "CSV (jogos)",
@@ -545,6 +569,7 @@ with tab3:
                 mime="text/csv",
                 use_container_width=True,
             )
+
         with c3:
             st.download_button(
                 "CSV (estratégias)",
@@ -553,6 +578,7 @@ with tab3:
                 mime="text/csv",
                 use_container_width=True,
             )
+
         with c4:
             st.download_button(
                 "MD",
@@ -570,6 +596,7 @@ with tab3:
                 mime="text/markdown",
                 use_container_width=True,
             )
+
         with c5:
             st.download_button(
                 "JSON",
