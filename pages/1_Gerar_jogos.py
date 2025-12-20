@@ -100,9 +100,11 @@ height = table_prefs_sidebar(prefix="gerar")
 with st.sidebar.expander("Filtros (básico)", expanded=False):
     fixas_txt = st.text_input("Dezenas fixas", placeholder="Ex: 10, 11, 12")
     proib_txt = st.text_input("Dezenas proibidas", placeholder="Ex: 1, 2, 3")
+
     soma_min = st.number_input("Soma mínima", min_value=0, max_value=2000, value=0, step=1)
     soma_max = st.number_input("Soma máxima", min_value=0, max_value=2000, value=0, step=1)
 
+    # key fixo para o widget (ajuda em reruns)
     orcamento_max = st.number_input(
         "Orçamento máximo",
         min_value=0.0,
@@ -110,7 +112,7 @@ with st.sidebar.expander("Filtros (básico)", expanded=False):
         value=0.0,
         step=10.0,
         key="orcamento_max",
-        help="Ao informar um orçamento, a quantidade de jogos passa a ser calculada automaticamente.",
+        help="Ao informar um orçamento, a quantidade de jogos é calculada automaticamente.",
     )
 
 dezenas_fixas = parse_lista(fixas_txt)
@@ -133,31 +135,13 @@ with st.sidebar.expander("Filtros (heurísticas)", expanded=False):
     )
 
     pares_min = st.number_input("Pares mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1)
-    pares_max = st.number_input(
-        "Pares máx",
-        min_value=0,
-        max_value=spec.n_dezenas_sorteio,
-        value=spec.n_dezenas_sorteio,
-        step=1,
-    )
+    pares_max = st.number_input("Pares máx", min_value=0, max_value=spec.n_dezenas_sorteio, value=spec.n_dezenas_sorteio, step=1)
 
     primos_min = st.number_input("Primos mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1)
-    primos_max = st.number_input(
-        "Primos máx",
-        min_value=0,
-        max_value=spec.n_dezenas_sorteio,
-        value=spec.n_dezenas_sorteio,
-        step=1,
-    )
+    primos_max = st.number_input("Primos máx", min_value=0, max_value=spec.n_dezenas_sorteio, value=spec.n_dezenas_sorteio, step=1)
 
     baixos_min = st.number_input("Baixos mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1)
-    baixos_max = st.number_input(
-        "Baixos máx",
-        min_value=0,
-        max_value=spec.n_dezenas_sorteio,
-        value=spec.n_dezenas_sorteio,
-        step=1,
-    )
+    baixos_max = st.number_input("Baixos máx", min_value=0, max_value=spec.n_dezenas_sorteio, value=spec.n_dezenas_sorteio, step=1)
 
 try:
     validar_dezenas(dezenas_fixas, spec.n_universo, "Fixas")
@@ -235,7 +219,6 @@ gerar = False
 gerar_misto = False
 
 games_info = get_games_info()
-
 usar_orcamento = float(orcamento_max) > 0
 
 if modo == "Uma estratégia":
@@ -468,28 +451,7 @@ with tab3:
             .sort_values("qtd", ascending=False)
         )
 
-        st.subheader("Gráficos (jogos gerados)")
-        tmp = df_out_all[["jogo_id", "soma"]].set_index("jogo_id")
-        st.line_chart(tmp, width="stretch", height=280)
-
-        st.subheader("Por estratégia")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.caption("Qtd de jogos por estratégia")
-            st.bar_chart(by_estrat[["qtd"]], width="stretch", height=280)
-        with c2:
-            st.caption("Soma média por estratégia")
-            st.bar_chart(by_estrat[["soma_media"]], width="stretch", height=280)
-        with c3:
-            st.caption("Rep. do último (média)")
-            st.bar_chart(by_estrat[["rep_ultimo_media"]], width="stretch", height=280)
-
-        with st.expander("Tabela (por estratégia)"):
-            df_show(st, by_estrat.reset_index(), height=height)
-
-        st.divider()
         st.subheader("Downloads")
-
         html_bytes = build_html_report(
             title="Lottery Helper - Relatório de Jogos",
             subtitle=f"{spec.modalidade} (jogos gerados)",
@@ -529,45 +491,3 @@ with tab3:
             mime="application/zip",
             use_container_width=True,
         )
-
-        c1, c2, c3, c4, c5 = st.columns(5)
-        with c1:
-            st.download_button(
-                "HTML",
-                data=html_bytes,
-                file_name=f"relatorio_jogos_{spec.modalidade}_{datetime.now().date()}.html",
-                mime="text/html",
-                use_container_width=True,
-            )
-        with c2:
-            st.download_button(
-                "CSV (jogos)",
-                data=df_to_csv_bytes(df_out_all),
-                file_name=f"jogos_{spec.modalidade}_{datetime.now().date()}.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
-        with c3:
-            st.download_button(
-                "CSV (estratégias)",
-                data=df_to_csv_bytes(by_estrat.reset_index()),
-                file_name=f"estrategias_{spec.modalidade}_{datetime.now().date()}.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
-        with c4:
-            st.download_button(
-                "MD",
-                data=md_bytes,
-                file_name=f"relatorio_jogos_{spec.modalidade}_{datetime.now().date()}.md",
-                mime="text/markdown",
-                use_container_width=True,
-            )
-        with c5:
-            st.download_button(
-                "JSON",
-                data=df_to_json_bytes(df_out_all),
-                file_name=f"jogos_{spec.modalidade}_{datetime.now().date()}.json",
-                mime="application/json",
-                use_container_width=True,
-            )
