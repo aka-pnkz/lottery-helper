@@ -37,3 +37,4 @@ st.write("Concurso min/max:", int(df["concurso"].min()), int(df["concurso"].max(
 st.write("Data min/max:", df["data"].min().date(), df["data"].max().date())
 
 st.info("Use as páginas no menu lateral: Gerar jogos, Análises e Debug.")
+
