@@ -24,13 +24,7 @@ from src.domain_lottery import (
 from src.games_export import games_info_to_df
 from src.history_cached import load_history_cached
 from src.models import GameInfo
-from src.reports import (
-    build_html_report,
-    df_to_csv_bytes,
-    df_to_json_bytes,
-    df_to_md_bytes,
-    make_zip_bytes,
-)
+from src.reports import build_html_report, df_to_csv_bytes, df_to_json_bytes, df_to_md_bytes
 from src.state import (
     clear_games,
     clear_history,
@@ -104,7 +98,6 @@ with st.sidebar.expander("Filtros (básico)", expanded=False):
     soma_min = st.number_input("Soma mínima", min_value=0, max_value=2000, value=0, step=1)
     soma_max = st.number_input("Soma máxima", min_value=0, max_value=2000, value=0, step=1)
 
-    # key fixo para o widget (ajuda em reruns)
     orcamento_max = st.number_input(
         "Orçamento máximo",
         min_value=0.0,
@@ -135,13 +128,31 @@ with st.sidebar.expander("Filtros (heurísticas)", expanded=False):
     )
 
     pares_min = st.number_input("Pares mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1)
-    pares_max = st.number_input("Pares máx", min_value=0, max_value=spec.n_dezenas_sorteio, value=spec.n_dezenas_sorteio, step=1)
+    pares_max = st.number_input(
+        "Pares máx",
+        min_value=0,
+        max_value=spec.n_dezenas_sorteio,
+        value=spec.n_dezenas_sorteio,
+        step=1,
+    )
 
     primos_min = st.number_input("Primos mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1)
-    primos_max = st.number_input("Primos máx", min_value=0, max_value=spec.n_dezenas_sorteio, value=spec.n_dezenas_sorteio, step=1)
+    primos_max = st.number_input(
+        "Primos máx",
+        min_value=0,
+        max_value=spec.n_dezenas_sorteio,
+        value=spec.n_dezenas_sorteio,
+        step=1,
+    )
 
     baixos_min = st.number_input("Baixos mín", min_value=0, max_value=spec.n_dezenas_sorteio, value=0, step=1)
-    baixos_max = st.number_input("Baixos máx", min_value=0, max_value=spec.n_dezenas_sorteio, value=spec.n_dezenas_sorteio, step=1)
+    baixos_max = st.number_input(
+        "Baixos máx",
+        min_value=0,
+        max_value=spec.n_dezenas_sorteio,
+        value=spec.n_dezenas_sorteio,
+        step=1,
+    )
 
 try:
     validar_dezenas(dezenas_fixas, spec.n_universo, "Fixas")
@@ -213,8 +224,8 @@ def filtro_total(j: list[int]) -> bool:
 # Geração
 # --------------------------
 modo = st.radio("Modo de geração", ["Uma estratégia", "Misto"], horizontal=True)
-estrategias = ["Aleatório puro", "Balanceado par/ímpar", "Quentes/Frias/Mix", "Sem sequências longas"]
 
+estrategias = ["Aleatório puro", "Balanceado par/ímpar", "Quentes/Frias/Mix", "Sem sequências longas"]
 gerar = False
 gerar_misto = False
 
@@ -268,15 +279,64 @@ if modo == "Uma estratégia":
 else:
     tam = st.slider("Dezenas por jogo", spec.n_min, spec.n_max, spec.n_min, key="tam_misto")
 
-    jm: dict[str, int] = {}
-    jm["Aleatório puro"] = st.number_input("Aleatório puro", 0, 500, 2, 1)
-    jm["Balanceado par/ímpar"] = st.number_input("Balanceado par/ímpar", 0, 500, 2, 1, key="mix_bal")
+    custo_jogo = float(preco_aposta(int(tam), int(spec.n_min), float(spec.preco_base)))
+    if usar_orcamento and custo_jogo > 0:
+        qtd_max_total = int(float(orcamento_max) // custo_jogo)
+        qtd_max_total = max(1, min(500, qtd_max_total))
+    else:
+        qtd_max_total = None
 
-    mix_q_quentes = mix_q_frias = mix_q_neutras = 0
-    mix_limite_seq = 3
+    if usar_orcamento:
+        st.info(
+            "Orçamento informado: no modo Misto, o total de jogos e a distribuição por estratégia "
+            "serão calculados automaticamente para caber no orçamento."
+        )
+        st.caption(
+            f"Orçamento: {money_ptbr(float(orcamento_max))} | "
+            f"Custo/jogo: {money_ptbr(custo_jogo)} | "
+            f"Total máximo: {qtd_max_total} jogo(s)"
+        )
 
-    with st.expander("Quentes/Frias/Mix"):
+        st.subheader("Distribuição das estratégias")
+
+        p_ale = st.slider("Peso: Aleatório puro", 0, 100, 25, key="peso_ale")
+        p_bal = st.slider("Peso: Balanceado par/ímpar", 0, 100, 25, key="peso_bal")
+        p_qfm = st.slider("Peso: Quentes/Frias/Mix", 0, 100, 25, key="peso_qfm")
+        p_seq = st.slider("Peso: Sem sequências longas", 0, 100, 25, key="peso_seq")
+
+        pesos = {
+            "Aleatório puro": int(p_ale),
+            "Balanceado par/ímpar": int(p_bal),
+            "Quentes/Frias/Mix": int(p_qfm),
+            "Sem sequências longas": int(p_seq),
+        }
+
+        soma_pesos = sum(pesos.values())
+        if soma_pesos <= 0:
+            st.warning("Defina pelo menos um peso > 0 para gerar jogos.")
+            jm = {k: 0 for k in pesos}
+        else:
+            raw = {k: (qtd_max_total * v) / soma_pesos for k, v in pesos.items()}
+            jm = {k: int(raw[k]) for k in raw}
+            resto = int(qtd_max_total - sum(jm.values()))
+            ordem = sorted(raw.keys(), key=lambda k: (raw[k] - int(raw[k])), reverse=True)
+            for i in range(resto):
+                jm[ordem[i % len(ordem)]] += 1
+
+        with st.expander("Preview das quantidades calculadas", expanded=False):
+            for k, v in jm.items():
+                st.write(f"- {k}: {v}")
+
+    else:
+        # Sem orçamento: mantém a escolha manual de quantidades (comportamento antigo)
+        jm: dict[str, int] = {}
+        jm["Aleatório puro"] = st.number_input("Aleatório puro", 0, 500, 2, 1)
+        jm["Balanceado par/ímpar"] = st.number_input("Balanceado par/ímpar", 0, 500, 2, 1, key="mix_bal")
         jm["Quentes/Frias/Mix"] = st.number_input("Quentes/Frias/Mix", 0, 500, 2, 1)
+        jm["Sem sequências longas"] = st.number_input("Sem sequências longas", 0, 500, 2, 1)
+
+    # Parâmetros da estratégia (misto) — existem sempre, pois alteram o gerador, não a quantidade
+    with st.expander("Parâmetros do Quentes/Frias/Mix (misto)", expanded=False):
         c1, c2, c3 = st.columns(3)
         mix_q_quentes = c1.number_input("Quentes (misto)", 0, int(tam), min(5, int(tam)))
         mix_q_frias = c2.number_input("Frias (misto)", 0, int(tam), min(5, int(tam)))
@@ -284,8 +344,7 @@ else:
             "Neutras (misto)", 0, int(tam), max(0, int(tam) - int(mix_q_quentes) - int(mix_q_frias))
         )
 
-    with st.expander("Sem sequências longas"):
-        jm["Sem sequências longas"] = st.number_input("Sem sequências longas", 0, 500, 2, 1)
+    with st.expander("Parâmetros do Sem sequências longas (misto)", expanded=False):
         mix_limite_seq = st.slider("Máx. sequência (misto)", 2, min(10, int(tam)), 3)
 
     gerar_misto = st.button("Gerar misto", type="primary")
@@ -451,7 +510,13 @@ with tab3:
             .sort_values("qtd", ascending=False)
         )
 
+        st.subheader("Por estratégia")
+        with st.expander("Tabela (por estratégia)"):
+            df_show(st, by_estrat.reset_index(), height=height)
+
+        st.divider()
         st.subheader("Downloads")
+
         html_bytes = build_html_report(
             title="Lottery Helper - Relatório de Jogos",
             subtitle=f"{spec.modalidade} (jogos gerados)",
@@ -463,31 +528,53 @@ with tab3:
             ],
         )
 
-        md_bytes = df_to_md_bytes(
-            title="Relatório de Jogos",
-            dfs=[
-                ("Resumo", pd.DataFrame([resumo])),
-                ("Filtros", pd.DataFrame([filtros_txt])),
-                ("Resumo por estratégia", by_estrat.reset_index()),
-                ("Jogos (Top 50)", df_out_all.head(50)),
-            ],
-            max_rows=200,
-        )
-
-        zip_bytes = make_zip_bytes(
-            [
-                (f"relatorio_jogos_{spec.modalidade}.html", html_bytes),
-                (f"jogos_{spec.modalidade}.csv", df_to_csv_bytes(df_out_all)),
-                (f"estrategias_{spec.modalidade}.csv", df_to_csv_bytes(by_estrat.reset_index())),
-                (f"relatorio_jogos_{spec.modalidade}.md", md_bytes),
-                (f"jogos_{spec.modalidade}.json", df_to_json_bytes(df_out_all)),
-            ]
-        )
-
-        st.download_button(
-            "Baixar tudo (ZIP)",
-            data=zip_bytes,
-            file_name=f"bundle_jogos_{spec.modalidade}_{datetime.now().date()}.zip",
-            mime="application/zip",
-            use_container_width=True,
-        )
+        c1, c2, c3, c4, c5 = st.columns(5)
+        with c1:
+            st.download_button(
+                "HTML",
+                data=html_bytes,
+                file_name=f"relatorio_jogos_{spec.modalidade}_{datetime.now().date()}.html",
+                mime="text/html",
+                use_container_width=True,
+            )
+        with c2:
+            st.download_button(
+                "CSV (jogos)",
+                data=df_to_csv_bytes(df_out_all),
+                file_name=f"jogos_{spec.modalidade}_{datetime.now().date()}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        with c3:
+            st.download_button(
+                "CSV (estratégias)",
+                data=df_to_csv_bytes(by_estrat.reset_index()),
+                file_name=f"estrategias_{spec.modalidade}_{datetime.now().date()}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        with c4:
+            st.download_button(
+                "MD",
+                data=df_to_md_bytes(
+                    title="Relatório de Jogos",
+                    dfs=[
+                        ("Resumo", pd.DataFrame([resumo])),
+                        ("Filtros", pd.DataFrame([filtros_txt])),
+                        ("Resumo por estratégia", by_estrat.reset_index()),
+                        ("Jogos (Top 50)", df_out_all.head(50)),
+                    ],
+                    max_rows=200,
+                ),
+                file_name=f"relatorio_jogos_{spec.modalidade}_{datetime.now().date()}.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
+        with c5:
+            st.download_button(
+                "JSON",
+                data=df_to_json_bytes(df_out_all),
+                file_name=f"jogos_{spec.modalidade}_{datetime.now().date()}.json",
+                mime="application/json",
+                use_container_width=True,
+            )
