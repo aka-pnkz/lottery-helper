@@ -181,6 +181,7 @@ if df is None:
     st.toast("Histórico carregado", icon="✅")
 
 freq_df = cached_frequencias(df, spec.n_dezenas_sorteio, spec.n_universo)
+
 last_row = df.sort_values("concurso").iloc[-1]
 dezenas_ult = {int(last_row[f"d{i}"]) for i in range(1, spec.n_dezenas_sorteio + 1)}
 
@@ -297,7 +298,7 @@ else:
             f"Total máximo: {qtd_max_total} jogo(s)"
         )
 
-        st.subheader("Distribuição das estratégias")
+        st.subheader("Distribuição das estratégias (por peso)")
         p_ale = st.slider("Peso: Aleatório puro", 0, 100, 25, key="peso_ale")
         p_bal = st.slider("Peso: Balanceado par/ímpar", 0, 100, 25, key="peso_bal")
         p_qfm = st.slider("Peso: Quentes/Frias/Mix", 0, 100, 25, key="peso_qfm")
@@ -318,32 +319,59 @@ else:
             raw = {k: (qtd_max_total * v) / soma_pesos for k, v in pesos.items()}
             jm = {k: int(raw[k]) for k in raw}
             resto = int(qtd_max_total - sum(jm.values()))
-            ordem = sorted(raw.keys(), key=lambda k: (raw[k] - int(raw[k])), reverse=True)
+            ordem_frac = sorted(raw.keys(), key=lambda k: (raw[k] - int(raw[k])), reverse=True)
             for i in range(resto):
-                jm[ordem[i % len(ordem)]] += 1
+                jm[ordem_frac[i % len(ordem_frac)]] += 1
 
-        with st.expander("Preview das quantidades calculadas", expanded=False):
-            for k, v in jm.items():
-                st.write(f"- {k}: {v}")
+        st.subheader("Resumo por estratégia")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Aleatório puro", jm.get("Aleatório puro", 0))
+        c2.metric("Balanceado", jm.get("Balanceado par/ímpar", 0))
+        c3.metric("Quentes/Frias/Mix", jm.get("Quentes/Frias/Mix", 0))
+        c4.metric("Sem sequências", jm.get("Sem sequências longas", 0))
+
+        # ---- Tabela de custo por estratégia (novo)
+        ordem = ["Aleatório puro", "Balanceado par/ímpar", "Quentes/Frias/Mix", "Sem sequências longas"]
+
+        custo_por_estrat = {k: float(jm.get(k, 0)) * float(custo_jogo) for k in ordem}
+        custo_estimado_total = float(sum(custo_por_estrat.values()))
+        sobra = float(max(0.0, float(orcamento_max) - custo_estimado_total))
+
+        df_custo = pd.DataFrame(
+            [
+                {
+                    "Estratégia": k,
+                    "Jogos": int(jm.get(k, 0)),
+                    "Custo estimado": float(custo_por_estrat.get(k, 0.0)),
+                }
+                for k in ordem
+            ]
+        )
+
+        with st.expander("Distribuição do custo (estimada)", expanded=False):
+            st.dataframe(
+                df_custo,
+                width="stretch",
+                hide_index=True,
+                column_config={
+                    "Custo estimado": st.column_config.NumberColumn("Custo estimado", format="R$ %.2f")
+                },
+            )
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Custo/jogo", money_ptbr(float(custo_jogo)))
+            m2.metric("Total estimado", money_ptbr(float(custo_estimado_total)))
+            m3.metric("Sobra estimada", money_ptbr(float(sobra)))
 
     else:
+        # Sem orçamento: mantém escolha manual
         jm: dict[str, int] = {}
         jm["Aleatório puro"] = st.number_input("Aleatório puro", 0, 500, 2, 1)
         jm["Balanceado par/ímpar"] = st.number_input("Balanceado par/ímpar", 0, 500, 2, 1, key="mix_bal")
+        jm["Quentes/Frias/Mix"] = st.number_input("Quentes/Frias/Mix", 0, 500, 2, 1)
+        jm["Sem sequências longas"] = st.number_input("Sem sequências longas", 0, 500, 2, 1)
 
-        with st.expander("Quentes/Frias/Mix"):
-            jm["Quentes/Frias/Mix"] = st.number_input("Quentes/Frias/Mix", 0, 500, 2, 1)
-            c1, c2, c3 = st.columns(3)
-            mix_q_quentes = c1.number_input("Quentes (misto)", 0, int(tam), min(5, int(tam)))
-            mix_q_frias = c2.number_input("Frias (misto)", 0, int(tam), min(5, int(tam)))
-            mix_q_neutras = c3.number_input(
-                "Neutras (misto)", 0, int(tam), max(0, int(tam) - int(mix_q_quentes) - int(mix_q_frias))
-            )
-
-        with st.expander("Sem sequências longas"):
-            jm["Sem sequências longas"] = st.number_input("Sem sequências longas", 0, 500, 2, 1)
-            mix_limite_seq = st.slider("Máx. sequência (misto)", 2, min(10, int(tam)), 3)
-
+    # Parâmetros de estratégia (misto) - sempre disponíveis
     with st.expander("Parâmetros do Quentes/Frias/Mix (misto)", expanded=False):
         c1, c2, c3 = st.columns(3)
         mix_q_quentes = c1.number_input("Quentes (misto)", 0, int(tam), min(5, int(tam)))
@@ -406,7 +434,9 @@ if modo == "Misto" and gerar_misto:
             itens += [("Quentes/Frias/Mix", j) for j in jogos]
 
         if jm.get("Sem sequências longas", 0) > 0:
-            jogos = gerar_sem_sequencias(int(jm["Sem sequências longas"]), int(tam), spec.n_universo, int(mix_limite_seq))
+            jogos = gerar_sem_sequencias(
+                int(jm["Sem sequências longas"]), int(tam), spec.n_universo, int(mix_limite_seq)
+            )
             itens += [("Sem sequências longas", j) for j in jogos]
 
         filtrados = [(estrat, j) for (estrat, j) in itens if filtro_total(j)]
@@ -560,7 +590,6 @@ with tab3:
                 mime="text/html",
                 use_container_width=True,
             )
-
         with c2:
             st.download_button(
                 "CSV (jogos)",
@@ -569,7 +598,6 @@ with tab3:
                 mime="text/csv",
                 use_container_width=True,
             )
-
         with c3:
             st.download_button(
                 "CSV (estratégias)",
@@ -578,7 +606,6 @@ with tab3:
                 mime="text/csv",
                 use_container_width=True,
             )
-
         with c4:
             st.download_button(
                 "MD",
@@ -596,7 +623,6 @@ with tab3:
                 mime="text/markdown",
                 use_container_width=True,
             )
-
         with c5:
             st.download_button(
                 "JSON",
